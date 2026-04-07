@@ -5,7 +5,7 @@ ENV TZ="$TZ"
 
 ARG CLAUDE_CODE_VERSION=latest
 
-# Install basic development tools and iptables/ipset
+# Install basic development tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
   ca-certificates \
   curl \
@@ -19,11 +19,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   unzip \
   gnupg2 \
   gh \
-  iptables \
-  ipset \
-  iproute2 \
-  dnsutils \
-  aggregate \
   jq \
   nano \
   vim \
@@ -37,13 +32,10 @@ RUN /usr/sbin/addgroup --gid 1337 pks && \
 RUN mkdir -p /usr/local/share/npm-global && \
   chown -R pks:pks /usr/local/share
 
-ARG USERNAME=pks
-
-# Persist bash history.
-RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
-  && mkdir /commandhistory \
+# Persist bash history
+RUN mkdir /commandhistory \
   && touch /commandhistory/.bash_history \
-  && chown -R $USERNAME /commandhistory
+  && chown -R pks /commandhistory
 
 # Set `DEVCONTAINER` environment variable to help with orientation
 ENV DEVCONTAINER=true
@@ -57,11 +49,11 @@ WORKDIR /workspace
 ARG GIT_DELTA_VERSION=0.18.2
 RUN ARCH=$(dpkg --print-architecture) && \
   wget "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
-  sudo dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
+  dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
   rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
 
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
-RUN sudo apt-get install -y nodejs
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+  apt-get install -y nodejs
 
 RUN echo "pks ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/pks && \
     chmod 0440 /etc/sudoers.d/pks
@@ -90,9 +82,7 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
   -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
   -x
 
-# Install Claude
-#RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash && \
-#    nvm install 24 && \
+# Install Claude Code
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
 # Install uv
@@ -100,10 +90,3 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ENV PATH="$PATH:/home/pks/.local/bin"
 
-# Copy and set up firewall script, setup sudo
-#COPY init-firewall.sh /usr/local/bin/
-#USER root
-#RUN chmod +x /usr/local/bin/init-firewall.sh && \
-#  echo "pks ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/pks && \
-#  chmod 0440 /etc/sudoers.d/pks
-USER pks
