@@ -1,1 +1,1 @@
-Source: https://github.com/anthropics/claude-code/blob/main/.devcontainer/Dockerfile
+Original source for Dockerfile: https://github.com/anthropics/claude-code/blob/main/.devcontainer/Dockerfile

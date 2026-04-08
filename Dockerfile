@@ -1,12 +1,6 @@
 FROM ubuntu:24.04
 
-ARG TZ
-ENV TZ="$TZ"
-
-ARG CLAUDE_CODE_VERSION=latest
-
-# Install basic development tools
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt update && apt install -y --no-install-recommends \
   ca-certificates \
   curl \
   less \
@@ -23,70 +17,39 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   nano \
   vim \
   wget \
-  && apt-get clean && rm -rf /var/lib/apt/lists/*
+  htop \
+  && apt autoremove && apt clean
 
 RUN /usr/sbin/addgroup --gid 1337 pks && \
     /usr/sbin/adduser --uid 1337 --ingroup pks --disabled-password --gecos "" pks
 
-# Ensure default pks user has access to /usr/local/share
-RUN mkdir -p /usr/local/share/npm-global && \
-  chown -R pks:pks /usr/local/share
-
-# Persist bash history
-RUN mkdir /commandhistory \
-  && touch /commandhistory/.bash_history \
-  && chown -R pks /commandhistory
-
-# Set `DEVCONTAINER` environment variable to help with orientation
-ENV DEVCONTAINER=true
-
-# Create workspace and config directories and set permissions
 RUN mkdir -p /workspace /home/pks/.claude && \
   chown -R pks:pks /workspace /home/pks/.claude
 
-WORKDIR /workspace
-
-ARG GIT_DELTA_VERSION=0.18.2
+ARG GIT_DELTA_VERSION=0.19.2
 RUN ARCH=$(dpkg --print-architecture) && \
   wget "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
   dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
   rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
 
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-  apt-get install -y nodejs
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+  apt install -y nodejs
 
 RUN echo "pks ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/pks && \
     chmod 0440 /etc/sudoers.d/pks
 
-# Set up non-root user
+WORKDIR /workspace
 USER pks
-
-# Install global packages
-ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
-ENV PATH=$PATH:/usr/local/share/npm-global/bin
-
-# Set the default shell to zsh rather than sh
+RUN git config --global user.email "pks@localhost" && git config --global user.name "pks"
 ENV SHELL=/bin/zsh
-
-# Set the default editor and visual
 ENV EDITOR=vim
 ENV VISUAL=vim
-
-# Default powerline10k theme
-ARG ZSH_IN_DOCKER_VERSION=1.2.0
-RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v${ZSH_IN_DOCKER_VERSION}/zsh-in-docker.sh)" -- \
-  -p git \
-  -p fzf \
-  -a "source /usr/share/doc/fzf/examples/key-bindings.zsh" \
-  -a "source /usr/share/doc/fzf/examples/completion.zsh" \
-  -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
-  -x
-
-# Install Claude Code
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
-
-# Install uv
+RUN curl -fsSL https://claude.ai/install.sh | bash
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-
 ENV PATH="$PATH:/home/pks/.local/bin"
-
+WORKDIR /workspace
+RUN uv init && uv add torch --index-url https://download.pytorch.org/whl/cu126 && uv add lightning datasets sacrebleu sentencepiece tensorboard tbparse
+RUN rm -f README.md main.py && git branch -M main && git add * .python-version .gitignore && git commit -m init
+RUN claude plugin marketplace add JuliusBrussee/caveman && claude plugin install caveman@caveman
+RUN mkdir src doc d ckpt log
+COPY PLAN.md /workspace/doc/PLAN.md
