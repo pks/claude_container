@@ -20,4 +20,4 @@ docker run \
   -e CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=yes \
   -e CLAUDE_CODE_SKIP_TRUST_SCREEN=1 \
   claude-container \
-  #--dangerously-skip-permissions --effort low "/caveman light\ncarry out doc/PLAN.md"
+  --dangerously-skip-permissions --effort low "/caveman light\ncarry out doc/PLAN.md"
