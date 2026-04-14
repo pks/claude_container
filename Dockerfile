@@ -47,7 +47,7 @@ RUN CUDA_VERSION=$(case "${GPU_ARCH}" in blackwell) echo cu130;; *) echo cu126;;
  && printf '\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n' "${CUDA_VERSION}" >> pyproject.toml \
  && uv add torch lightning datasets sacrebleu sentencepiece tensorboard tbparse \
  && case "${GPU_ARCH}" in \
-      ampere)    uv pip install packaging wheel && uv pip install flash-attn --no-build-isolation;; \
+      ampere)    uv pip install packaging wheel psutil && uv pip install flash-attn --no-build-isolation;; \
       blackwell) uv pip install 'flash-attn-4[cu13]' --prerelease=allow;; \
     esac
 
