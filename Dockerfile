@@ -14,6 +14,17 @@ RUN apt update && apt upgrade -y && apt dist-upgrade -y \
  && apt install -y nodejs \
  && apt autoremove && apt clean
 
+# CUDA toolkit (needed to build flash-attn from source on Ampere)
+RUN if [ "${GPU_ARCH}" = "ampere" ]; then \
+      curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
+        -o /tmp/cuda-keyring.deb \
+      && dpkg -i /tmp/cuda-keyring.deb && rm /tmp/cuda-keyring.deb \
+      && apt update \
+      && apt install -y --no-install-recommends cuda-nvcc-12-6 cuda-cudart-dev-12-6 \
+      && apt clean; \
+    fi
+ENV CUDA_HOME=/usr/local/cuda
+
 # User setup — skip if UID/GID already exist in the image
 RUN getent group ${USER_GID} >/dev/null \
       || /usr/sbin/addgroup --gid ${USER_GID} ${USERNAME} \
