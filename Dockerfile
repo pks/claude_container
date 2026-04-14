@@ -13,17 +13,23 @@ RUN apt update && apt upgrade -y && apt dist-upgrade -y \
  && apt install -y nodejs \
  && apt autoremove && apt clean
 
-# User setup
-RUN /usr/sbin/addgroup --gid ${USER_GID} ${USERNAME} \
- && /usr/sbin/adduser --uid ${USER_UID} --ingroup ${USERNAME} --disabled-password --gecos "" ${USERNAME} \
- && echo "${USERNAME} ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/${USERNAME} \
- && chmod 0440 /etc/sudoers.d/${USERNAME} \
+# User setup — skip if UID/GID already exist in the image
+RUN getent group ${USER_GID} >/dev/null \
+      || /usr/sbin/addgroup --gid ${USER_GID} ${USERNAME} \
+ && getent passwd ${USER_UID} >/dev/null \
+      || /usr/sbin/adduser --uid ${USER_UID} \
+           --ingroup $(getent group ${USER_GID} | cut -d: -f1) \
+           --disabled-password --gecos "" ${USERNAME} \
+ && USR=$(getent passwd ${USER_UID} | cut -d: -f1) \
+ && echo "${USR} ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/${USR} \
+ && chmod 0440 /etc/sudoers.d/${USR} \
  && mkdir -p /workspace /home/${USERNAME}/.claude \
- && chown -R ${USERNAME}:${USERNAME} /workspace /home/${USERNAME}/.claude
+ && chown -R ${USER_UID}:${USER_GID} /workspace /home/${USERNAME}/.claude
 
 WORKDIR /workspace
-USER ${USERNAME}
+USER ${USER_UID}:${USER_GID}
 ENV SHELL=/bin/bash
+ENV HOME=/home/${USERNAME}
 ENV PATH="$PATH:/home/${USERNAME}/.local/bin"
 
 # Git
