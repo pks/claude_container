@@ -3,7 +3,7 @@ FROM ubuntu:24.04
 ARG USERNAME
 ARG USER_UID
 ARG USER_GID
-ARG CUDA_VERSION=cu126
+ARG GPU_ARCH=ampere
 
 # System packages
 RUN apt update && apt upgrade -y && apt dist-upgrade -y \
@@ -41,11 +41,15 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
  && curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Python environment
-RUN uv init --python 3.12 \
+RUN CUDA_VERSION=$(case "${GPU_ARCH}" in blackwell) echo cu130;; *) echo cu126;; esac) \
+ && uv init --python 3.12 \
  && sed -i 's/requires-python.*/requires-python = "==3.12.*"/' pyproject.toml \
  && printf '\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n' "${CUDA_VERSION}" >> pyproject.toml \
  && uv add torch lightning datasets sacrebleu sentencepiece tensorboard tbparse \
- && if echo "${CUDA_VERSION}" | grep -q '^cu13'; then uv pip install 'flash-attn-4[cu13]' --prerelease=allow; fi
+ && case "${GPU_ARCH}" in \
+      ampere)    uv pip install packaging wheel && uv pip install flash-attn --no-build-isolation;; \
+      blackwell) uv pip install 'flash-attn-4[cu13]' --prerelease=allow;; \
+    esac
 
 # Initialize workspace repo
 RUN rm -f README.md main.py \
