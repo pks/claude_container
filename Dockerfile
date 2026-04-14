@@ -4,6 +4,7 @@ ARG USERNAME
 ARG USER_UID
 ARG USER_GID
 ARG GPU_ARCH=ampere
+ARG CUDA_VERSION=cu126
 
 # System packages
 RUN apt update && apt upgrade -y && apt dist-upgrade -y \
@@ -41,8 +42,7 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
  && curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Python environment
-RUN CUDA_VERSION=$(case "${GPU_ARCH}" in blackwell) echo cu130;; *) echo cu126;; esac) \
- && uv init --python 3.12 \
+RUN uv init --python 3.12 \
  && sed -i 's/requires-python.*/requires-python = "==3.12.*"/' pyproject.toml \
  && printf '\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n' "${CUDA_VERSION}" >> pyproject.toml \
  && uv add torch lightning datasets sacrebleu sentencepiece tensorboard tbparse \
