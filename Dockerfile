@@ -20,7 +20,7 @@ RUN if [ "${GPU_ARCH}" = "ampere" ]; then \
         -o /tmp/cuda-keyring.deb \
       && dpkg -i /tmp/cuda-keyring.deb && rm /tmp/cuda-keyring.deb \
       && apt update \
-      && apt install -y --no-install-recommends cuda-nvcc-12-6 cuda-cudart-dev-12-6 \
+      && apt install -y --no-install-recommends cuda-nvcc-12-6 cuda-cudart-dev-12-6 python3.12-dev \
       && apt clean; \
     fi
 ENV CUDA_HOME=/usr/local/cuda
