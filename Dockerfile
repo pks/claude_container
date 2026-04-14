@@ -45,7 +45,7 @@ RUN uv init --python 3.12 \
  && sed -i 's/requires-python.*/requires-python = "==3.12.*"/' pyproject.toml \
  && printf '\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n' "${CUDA_VERSION}" >> pyproject.toml \
  && uv add torch lightning datasets sacrebleu sentencepiece tensorboard tbparse \
- && if echo "${CUDA_VERSION}" | grep -q '^cu13'; then uv add --prerelease=allow 'flash-attn-4[cu13]'; fi
+ && if echo "${CUDA_VERSION}" | grep -q '^cu13'; then uv pip install 'flash-attn-4[cu13]' --prerelease=allow; fi
 
 # Initialize workspace repo
 RUN rm -f README.md main.py \
