@@ -24,7 +24,7 @@ RUN getent group ${USER_GID} >/dev/null \
  && echo "${USR} ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/${USR} \
  && chmod 0440 /etc/sudoers.d/${USR} \
  && mkdir -p /workspace /home/${USERNAME}/.claude \
- && chown -R ${USER_UID}:${USER_GID} /workspace /home/${USERNAME}/.claude
+ && chown -R ${USER_UID}:${USER_GID} /workspace /home/${USERNAME}
 
 WORKDIR /workspace
 USER ${USER_UID}:${USER_GID}
