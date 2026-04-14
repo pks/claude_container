@@ -10,6 +10,7 @@ ARG CUDA_VERSION=cu126
 RUN apt update && apt upgrade -y && apt dist-upgrade -y \
  && apt install -y --no-install-recommends \
       ca-certificates curl less git procps sudo unzip gnupg2 gh jq \
+      cmake g++ make \
  && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
  && apt install -y nodejs \
  && apt autoremove && apt clean
@@ -71,6 +72,13 @@ RUN rm -f README.md main.py \
 # Claude plugins
 RUN claude plugin marketplace add JuliusBrussee/caveman \
  && claude plugin install caveman@caveman
+
+# Tools
+RUN mkdir tools \
+ && git clone https://github.com/clab/fast_align.git tools/fast_align \
+ && mkdir tools/fast_align/build \
+ && cd tools/fast_align/build && cmake .. && make -j$(nproc)
+ENV PATH="$PATH:/workspace/tools/fast_align/build"
 
 # Project structure
 RUN mkdir src doc d ckpt log
