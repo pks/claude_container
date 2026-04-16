@@ -75,4 +75,4 @@ RUN claude plugin marketplace add JuliusBrussee/caveman \
 
 # Project structure
 RUN mkdir src doc d ckpt log
-COPY PLAN.md /workspace/doc/PLAN.md
+COPY plan/PLAN.md /workspace/doc/PLAN.md
