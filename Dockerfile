@@ -73,13 +73,6 @@ RUN rm -f README.md main.py \
 RUN claude plugin marketplace add JuliusBrussee/caveman \
  && claude plugin install caveman@caveman
 
-# Tools
-RUN mkdir tools \
- && git clone https://github.com/clab/fast_align.git tools/fast_align \
- && mkdir tools/fast_align/build \
- && cd tools/fast_align/build && cmake .. && make -j$(nproc)
-ENV PATH="$PATH:/workspace/tools/fast_align/build"
-
 # Project structure
 RUN mkdir src doc d ckpt log
 COPY PLAN.md /workspace/doc/PLAN.md
