@@ -1,0 +1,56 @@
+{
+  "providers": {
+    "ollama": {
+      "api": "openai-completions",
+      "apiKey": "ollama",
+      "baseUrl": "http://localhost:11434/v1",
+      "models": [
+        {
+          "contextWindow": 256000,
+          "id": "qwen3.6:27b",
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": true
+        },
+        {
+          "contextWindow": 256000,
+          "id": "qwen3.6:35b",
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": true
+        },
+        {
+          "contextWindow": 256000,
+          "id": "gemma4:26b",
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": true
+        },
+        {
+          "contextWindow": 256000,
+          "id": "gemma4:31b",
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": true
+        },
+        {
+          "contextWindow": 128000,
+          "id": "gemma3:27b",
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": false
+        }
+      ]
+    }
+  }
+}
