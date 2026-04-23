@@ -73,6 +73,19 @@ RUN rm -f README.md main.py \
 RUN claude plugin marketplace add JuliusBrussee/caveman \
  && claude plugin install caveman@caveman
 
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
+  && npm config set prefix '~/.npm-global' \
+  && npm install -g @mariozechner/pi-coding-agent \
+  && npx skills add JuliusBrussee/caveman --yes
+
 # Project structure
+RUN mkdir -p /workspace /home/${USERNAME}/.pi \
+ && chown -R ${USER_UID}:${USER_GID} /home/${USERNAME}
+RUN mkdir -p /workspace /home/ubuntu/.pi \
+ && chown -R ${USER_UID}:${USER_GID} /home/ubuntu /home/pks
+
 RUN mkdir src doc d ckpt log
 COPY plan/PLAN.md /workspace/doc/PLAN.md
+COPY models.json /home/pks/.pi/agent/models.json
+COPY models.json /home/ubuntu/.pi/agent/models.json
+RUN sudo chown -R ${USER_UID}:${USER_GID} /home/ubuntu /home/pks
