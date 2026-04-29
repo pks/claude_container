@@ -56,7 +56,7 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
 RUN uv init --python 3.12 \
  && sed -i 's/requires-python.*/requires-python = "==3.12.*"/' pyproject.toml \
  && printf '\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n' "${CUDA_VERSION}" >> pyproject.toml \
- && uv add torch lightning datasets sacrebleu sentencepiece tensorboard tbparse \
+ && uv add torch lightning datasets sacrebleu sentencepiece tensorboard tbparse transformers einops huggingface-hub \
  && case "${GPU_ARCH}" in \
       ampere)    uv pip install packaging wheel psutil && uv pip install flash-attn --no-build-isolation;; \
       blackwell) uv pip install 'flash-attn-4[cu13]' --prerelease=allow;; \
@@ -75,6 +75,13 @@ RUN claude plugin marketplace add JuliusBrussee/caveman \
  && npm config set prefix '~/.npm-global' \
  && npm install -g @mariozechner/pi-coding-agent \
  && npx skills add JuliusBrussee/caveman --yes
+
+# Tools
+RUN mkdir tools \
+ && git clone https://github.com/clab/fast_align.git tools/fast_align \
+ && mkdir tools/fast_align/build \
+ && cd tools/fast_align/build && cmake .. && make -j$(nproc)
+ENV PATH="$PATH:/workspace/tools/fast_align/build"
 
 # Project structure + pi extension
 RUN mkdir src doc d ckpt log
