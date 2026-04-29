@@ -1,8 +1,8 @@
 FROM ubuntu:24.04
 
-ARG USERNAME
-ARG USER_UID
-ARG USER_GID
+ARG USERNAME=ubuntu
+ARG USER_UID=1000
+ARG USER_GID=1000
 ARG GPU_ARCH=ampere
 ARG CUDA_VERSION=cu126
 
@@ -26,24 +26,23 @@ RUN if [ "${GPU_ARCH}" = "ampere" ]; then \
     fi
 ENV CUDA_HOME=/usr/local/cuda
 
-# User setup — skip if UID/GID already exist in the image
-RUN getent group ${USER_GID} >/dev/null \
-      || /usr/sbin/addgroup --gid ${USER_GID} ${USERNAME} \
- && getent passwd ${USER_UID} >/dev/null \
-      || /usr/sbin/adduser --uid ${USER_UID} \
-           --ingroup $(getent group ${USER_GID} | cut -d: -f1) \
-           --disabled-password --gecos "" ${USERNAME} \
- && USR=$(getent passwd ${USER_UID} | cut -d: -f1) \
- && echo "${USR} ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/${USR} \
- && chmod 0440 /etc/sudoers.d/${USR} \
- && mkdir -p /workspace /home/${USERNAME}/.claude \
+# Rename the built-in `ubuntu` user to ${USERNAME} and align UID/GID with host
+RUN if [ "${USERNAME}" != "ubuntu" ]; then \
+      groupmod -n ${USERNAME} ubuntu \
+      && usermod -l ${USERNAME} -d /home/${USERNAME} -m ubuntu; \
+    fi \
+ && if [ "${USER_GID}" != "$(id -g ${USERNAME})" ]; then groupmod -g ${USER_GID} ${USERNAME}; fi \
+ && if [ "${USER_UID}" != "$(id -u ${USERNAME})" ]; then usermod -u ${USER_UID} ${USERNAME}; fi \
+ && echo "${USERNAME} ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/${USERNAME} \
+ && chmod 0440 /etc/sudoers.d/${USERNAME} \
+ && mkdir -p /workspace /home/${USERNAME}/.claude /home/${USERNAME}/.pi/agent \
  && chown -R ${USER_UID}:${USER_GID} /workspace /home/${USERNAME}
 
 WORKDIR /workspace
 USER ${USER_UID}:${USER_GID}
-ENV SHELL=/bin/bash
 ENV HOME=/home/${USERNAME}
-ENV PATH="$PATH:/home/${USERNAME}/.local/bin"
+ENV SHELL=/bin/bash
+ENV PATH="/home/${USERNAME}/.npm-global/bin:/home/${USERNAME}/.local/bin:$PATH"
 
 # Git
 RUN git config --global user.email "${USERNAME}@localhost" \
@@ -69,23 +68,18 @@ RUN rm -f README.md main.py \
  && git add * .python-version .gitignore \
  && git commit -m init
 
-# Claude plugins
+# Claude plugins + pi-coding-agent + caveman skill
 RUN claude plugin marketplace add JuliusBrussee/caveman \
- && claude plugin install caveman@caveman
+ && claude plugin install caveman@caveman \
+ && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
+ && npm config set prefix '~/.npm-global' \
+ && npm install -g @mariozechner/pi-coding-agent \
+ && npx skills add JuliusBrussee/caveman --yes
 
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
-  && npm config set prefix '~/.npm-global' \
-  && npm install -g @mariozechner/pi-coding-agent \
-  && npx skills add JuliusBrussee/caveman --yes
-
-# Project structure
-RUN mkdir -p /workspace /home/${USERNAME}/.pi \
- && chown -R ${USER_UID}:${USER_GID} /home/${USERNAME}
-RUN mkdir -p /workspace /home/ubuntu/.pi \
- && chown -R ${USER_UID}:${USER_GID} /home/ubuntu /home/pks
-
+# Project structure + pi extension
 RUN mkdir src doc d ckpt log
-COPY plan/PLAN.md /workspace/doc/PLAN.md
-COPY models.json /home/pks/.pi/agent/models.json
-COPY models.json /home/ubuntu/.pi/agent/models.json
-RUN sudo chown -R ${USER_UID}:${USER_GID} /home/ubuntu /home/pks
+COPY --chown=${USER_UID}:${USER_GID} plan/PLAN.md /workspace/doc/PLAN.md
+COPY --chown=${USER_UID}:${USER_GID} models.json /home/${USERNAME}/.pi/agent/models.json
+COPY --chown=${USER_UID}:${USER_GID} pi-extensions /tmp/pi-extensions
+RUN pi install /tmp/pi-extensions/azure-anthropic \
+ && pi install /tmp/pi-extensions/azure-openai
