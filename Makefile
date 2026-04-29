@@ -4,7 +4,7 @@ CUDA_VERSION := $(if $(filter blackwell,$(GPU_ARCH)),cu130,cu126)
 image:
 	@echo "Detected GPU_ARCH=$(GPU_ARCH) CUDA_VERSION=$(CUDA_VERSION)"
 	docker build \
-		--build-arg USERNAME=$$(whoami) \
+		--build-arg USERNAME=ubuntu \
 		--build-arg USER_UID=$$(id -u) \
 		--build-arg USER_GID=$$(id -g) \
 		--build-arg GPU_ARCH=$(GPU_ARCH) \
