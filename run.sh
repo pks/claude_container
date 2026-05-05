@@ -62,6 +62,10 @@ MOUNTS=(
 [ -f ~/.claude.json ] \
   && MOUNTS+=(-v ~/.claude.json:/home/ubuntu/.claude.json)
 
+# Task brief, sourced live from the host so edits don't require a rebuild.
+[ -f "$PWD/plan/PLAN.md" ] \
+  && MOUNTS+=(-v "$PWD/plan/PLAN.md:/workspace/doc/PLAN.md:ro")
+
 # Mithril spot signal — the in-container watcher polls it and SIGINTs the
 # agent on preemption.
 [ -d /opt/mithril ] \

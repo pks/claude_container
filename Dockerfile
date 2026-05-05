@@ -83,9 +83,10 @@ RUN mkdir tools \
  && cd tools/fast_align/build && cmake .. && make -j$(nproc)
 ENV PATH="$PATH:/workspace/tools/fast_align/build"
 
-# Project structure + pi extension
+# Project structure + pi extension. plan/PLAN.md is bind-mounted from the
+# host at run time (run.sh) rather than copied in, so edits propagate
+# without rebuilding.
 RUN mkdir src doc d ckpt log
-COPY --chown=${USER_UID}:${USER_GID} plan/PLAN.md /workspace/doc/PLAN.md
 COPY --chown=${USER_UID}:${USER_GID} models.json /home/${USERNAME}/.pi/agent/models.json
 COPY --chown=${USER_UID}:${USER_GID} pi-extensions /tmp/pi-extensions
 RUN pi install /tmp/pi-extensions/azure-anthropic \

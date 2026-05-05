@@ -4,7 +4,7 @@ CUDA_VERSION := $(if $(filter blackwell,$(GPU_ARCH)),cu130,cu126)
 # Content hash of all files baked into the image. run.sh stores this in
 # state/.image-version on first seed and warns on subsequent runs if the
 # current image's version differs (i.e. the state is stale w.r.t. the image).
-IMAGE_VERSION := $(shell find Dockerfile ops models.json pi-extensions plan/PLAN.md -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-12)
+IMAGE_VERSION := $(shell find Dockerfile ops models.json pi-extensions -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-12)
 
 image:
 	@echo "Detected GPU_ARCH=$(GPU_ARCH) CUDA_VERSION=$(CUDA_VERSION) IMAGE_VERSION=$(IMAGE_VERSION)"
