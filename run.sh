@@ -9,39 +9,47 @@ case "$GPU" in
   *)   GPU_FLAG=(--gpus "device=$GPU") ;;
 esac
 
-# Persistent host state. /workspace, ~/.claude/projects (Claude Code session
-# logs), and ~/.pi/agent/sessions (pi session logs) are bind-mounted from
-# here so they survive container restarts and same-node-type Mithril spot
-# relocations (which preserve the root disk). Override with DIFFUSEMT_STATE.
+# Persistent host state. /workspace and /home/ubuntu/ are bind-mounted from
+# here so everything — code, ckpts, agent sessions, npm-global, ~/.claude
+# (plugins, settings, history, projects), ~/.pi (extensions, sessions) —
+# survives container restarts and same-node-type Mithril spot relocations
+# (which preserve the root disk). Override with DIFFUSEMT_STATE.
+#
+# Note: the home bind mount means image-side updates to ~/.claude/,
+# ~/.pi/, npm globals, etc. won't propagate to existing state. To pick up
+# image rebuilds: rm -rf $STATE_DIR/home and re-run (state/workspace stays
+# intact). Same for workspace: rm -rf $STATE_DIR/workspace to re-seed.
 STATE_DIR="${DIFFUSEMT_STATE:-$PWD/state}"
-mkdir -p "$STATE_DIR"/{workspace,claude-projects,pi-sessions}
+mkdir -p "$STATE_DIR"/{workspace,home}
 
-# Seed the workspace bind mount from the image on first run. Subsequent runs
-# pick up the agent's accumulated state. To start over from a clean image
-# workspace: rm -rf $STATE_DIR/workspace and re-run.
-if [ -z "$(ls -A "$STATE_DIR/workspace" 2>/dev/null)" ]; then
-  echo "run.sh: seeding $STATE_DIR/workspace from claude-container image..." >&2
+# Seed empty bind mounts from the image on first run.
+seed_from_image() {
+  local src="$1" dst="$2"
+  [ -n "$(ls -A "$dst" 2>/dev/null)" ] && return 0
+  echo "run.sh: seeding $dst from claude-container image ($src)..." >&2
+  local cid
   cid=$(docker create claude-container)
-  docker cp "$cid:/workspace/." "$STATE_DIR/workspace/"
+  docker cp "$cid:$src/." "$dst/"
   docker rm "$cid" >/dev/null
-fi
+}
+seed_from_image /workspace      "$STATE_DIR/workspace"
+seed_from_image /home/ubuntu    "$STATE_DIR/home"
 
 # Resume only when there's actually a session for the agent we're launching.
 HAS_CLAUDE_SESSION=0
 HAS_PI_SESSION=0
-[ -n "$(find "$STATE_DIR/claude-projects" -name '*.jsonl' -print -quit 2>/dev/null)" ] \
+[ -n "$(find "$STATE_DIR/home/.claude/projects" -name '*.jsonl' -print -quit 2>/dev/null)" ] \
   && HAS_CLAUDE_SESSION=1
-[ -n "$(find "$STATE_DIR/pi-sessions" -name '*.jsonl' -print -quit 2>/dev/null)" ] \
+[ -n "$(find "$STATE_DIR/home/.pi/agent/sessions" -name '*.jsonl' -print -quit 2>/dev/null)" ] \
   && HAS_PI_SESSION=1
 
 MOUNTS=(
   -v "$STATE_DIR/workspace:/workspace"
-  -v "$STATE_DIR/claude-projects:/home/ubuntu/.claude/projects"
-  -v "$STATE_DIR/pi-sessions:/home/ubuntu/.pi/agent/sessions"
+  -v "$STATE_DIR/home:/home/ubuntu"
 )
 
-# Reuse host Claude Code auth if available. Layered over the claude-projects
-# bind mount above (single-file mount wins for that one file).
+# Reuse host Claude Code auth if available. Single-file mounts must come
+# after the home dir mount so they overlay it.
 [ -f ~/.claude/.credentials.json ] \
   && MOUNTS+=(-v ~/.claude/.credentials.json:/home/ubuntu/.claude/.credentials.json)
 [ -f ~/.claude.json ] \
