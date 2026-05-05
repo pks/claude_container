@@ -23,6 +23,7 @@ STATE_DIR="${DIFFUSEMT_STATE:-$PWD/state}"
 mkdir -p "$STATE_DIR"/{workspace,home}
 
 # Seed empty bind mounts from the image on first run.
+seeded=0
 seed_from_image() {
   local src="$1" dst="$2"
   [ -n "$(ls -A "$dst" 2>/dev/null)" ] && return 0
@@ -31,9 +32,24 @@ seed_from_image() {
   cid=$(docker create claude-container)
   docker cp "$cid:$src/." "$dst/"
   docker rm "$cid" >/dev/null
+  seeded=1
 }
 seed_from_image /workspace      "$STATE_DIR/workspace"
 seed_from_image /home/ubuntu    "$STATE_DIR/home"
+
+# Image version sentinel. The Makefile stamps the image with a content hash
+# of build inputs; if the current image differs from what the state was
+# seeded against, warn the user — image-side updates won't reach the
+# bind-mounted home until they rm and re-seed.
+IMAGE_VERSION=$(docker image inspect claude-container --format '{{index .Config.Labels "diffusemt.version"}}' 2>/dev/null || true)
+[ -z "$IMAGE_VERSION" ] && IMAGE_VERSION=unknown
+SEED_VERSION_FILE="$STATE_DIR/.image-version"
+if [ "$seeded" = 1 ] || [ ! -f "$SEED_VERSION_FILE" ]; then
+  echo "$IMAGE_VERSION" > "$SEED_VERSION_FILE"
+elif [ "$(cat "$SEED_VERSION_FILE")" != "$IMAGE_VERSION" ]; then
+  echo "run.sh: WARNING: state seeded against image $(cat "$SEED_VERSION_FILE"), current is $IMAGE_VERSION" >&2
+  echo "run.sh:   rm -rf $STATE_DIR/home (and/or $STATE_DIR/workspace) to re-seed from current image" >&2
+fi
 
 # Resume only when there's actually a session for the agent we're launching.
 HAS_CLAUDE_SESSION=0

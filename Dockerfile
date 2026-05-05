@@ -103,3 +103,10 @@ RUN chmod 0755 /usr/local/bin/entrypoint.sh \
                /usr/local/bin/mithril-hook.sh
 USER ${USER_UID}:${USER_GID}
 COPY --chown=${USER_UID}:${USER_GID} ops/claude-settings.json /home/${USERNAME}/.claude/settings.json
+
+# Image version: content hash of build inputs (Dockerfile + ops + models.json
+# + pi-extensions). Set by the Makefile via --build-arg. run.sh reads this
+# label to detect when state is stale w.r.t. the current image.
+ARG IMAGE_VERSION=unknown
+LABEL diffusemt.version=${IMAGE_VERSION}
+ENV DIFFUSEMT_IMAGE_VERSION=${IMAGE_VERSION}
