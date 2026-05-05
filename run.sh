@@ -9,25 +9,17 @@ case "$GPU" in
   *)   GPU_FLAG=(--gpus "device=$GPU") ;;
 esac
 
-# Persistent host state. /workspace and /home/ubuntu/ are bind-mounted from
-# here so everything — code, ckpts, agent sessions, npm-global, ~/.claude
-# (plugins, settings, history, projects), ~/.pi (extensions, sessions) —
-# survives container restarts and same-node-type Mithril spot relocations
-# (which preserve the root disk). Override with DIFFUSEMT_STATE.
-#
-# Note: the home bind mount means image-side updates to ~/.claude/,
-# ~/.pi/, npm globals, etc. won't propagate to existing state. To pick up
-# image rebuilds: rm -rf $STATE_DIR/home and re-run (state/workspace stays
-# intact). Same for workspace: rm -rf $STATE_DIR/workspace to re-seed.
+# /workspace and /home/ubuntu bind-mount from $STATE_DIR so code, ckpts,
+# sessions, plugins, npm-global, etc. survive container exits and same-
+# node-type Mithril spot relocations (which preserve the root disk).
 STATE_DIR="${DIFFUSEMT_STATE:-$PWD/state}"
 mkdir -p "$STATE_DIR"/{workspace,home}
 
-# Seed empty bind mounts from the image on first run.
 seeded=0
 seed_from_image() {
   local src="$1" dst="$2"
   [ -n "$(ls -A "$dst" 2>/dev/null)" ] && return 0
-  echo "run.sh: seeding $dst from claude-container image ($src)..." >&2
+  echo "run.sh: seeding $dst <- $src" >&2
   local cid
   cid=$(docker create claude-container)
   docker cp "$cid:$src/." "$dst/"
@@ -37,21 +29,21 @@ seed_from_image() {
 seed_from_image /workspace      "$STATE_DIR/workspace"
 seed_from_image /home/ubuntu    "$STATE_DIR/home"
 
-# Image version sentinel. The Makefile stamps the image with a content hash
-# of build inputs; if the current image differs from what the state was
-# seeded against, warn the user — image-side updates won't reach the
-# bind-mounted home until they rm and re-seed.
+# Refuse to start when state was seeded against a different image — the
+# image-side bits in /home/ubuntu/ (settings.json, plugins, npm globals)
+# won't reach the bind-mounted home, so behavior diverges silently.
+# Override with DIFFUSEMT_FORCE=1.
 IMAGE_VERSION=$(docker image inspect claude-container --format '{{index .Config.Labels "diffusemt.version"}}' 2>/dev/null || true)
 [ -z "$IMAGE_VERSION" ] && IMAGE_VERSION=unknown
 SEED_VERSION_FILE="$STATE_DIR/.image-version"
 if [ "$seeded" = 1 ] || [ ! -f "$SEED_VERSION_FILE" ]; then
   echo "$IMAGE_VERSION" > "$SEED_VERSION_FILE"
-elif [ "$(cat "$SEED_VERSION_FILE")" != "$IMAGE_VERSION" ]; then
-  echo "run.sh: WARNING: state seeded against image $(cat "$SEED_VERSION_FILE"), current is $IMAGE_VERSION" >&2
-  echo "run.sh:   rm -rf $STATE_DIR/home (and/or $STATE_DIR/workspace) to re-seed from current image" >&2
+elif [ "$(cat "$SEED_VERSION_FILE")" != "$IMAGE_VERSION" ] && [ "${DIFFUSEMT_FORCE:-}" != 1 ]; then
+  echo "run.sh: state seeded against image $(cat "$SEED_VERSION_FILE"), current is $IMAGE_VERSION" >&2
+  echo "run.sh: rm -rf $STATE_DIR/home (and/or $STATE_DIR/workspace) to re-seed, or DIFFUSEMT_FORCE=1 to override" >&2
+  exit 1
 fi
 
-# Resume only when there's actually a session for the agent we're launching.
 HAS_CLAUDE_SESSION=0
 HAS_PI_SESSION=0
 [ -n "$(find "$STATE_DIR/home/.claude/projects" -name '*.jsonl' -print -quit 2>/dev/null)" ] \
@@ -64,15 +56,14 @@ MOUNTS=(
   -v "$STATE_DIR/home:/home/ubuntu"
 )
 
-# Reuse host Claude Code auth if available. Single-file mounts must come
-# after the home dir mount so they overlay it.
+# Host Claude Code auth, layered over the home bind mount above.
 [ -f ~/.claude/.credentials.json ] \
   && MOUNTS+=(-v ~/.claude/.credentials.json:/home/ubuntu/.claude/.credentials.json)
 [ -f ~/.claude.json ] \
   && MOUNTS+=(-v ~/.claude.json:/home/ubuntu/.claude.json)
 
-# Mithril spot-interruption signal file (read-only). The in-container watcher
-# polls it and SIGINTs the agent so it breaks out of long-running tool calls.
+# Mithril spot signal — the in-container watcher polls it and SIGINTs the
+# agent on preemption.
 [ -d /opt/mithril ] \
   && MOUNTS+=(-v /opt/mithril:/opt/mithril:ro)
 
@@ -86,7 +77,6 @@ ENVS=(
 PROMPT='/skill:caveman lite\ncarry out doc/PLAN.md'
 RESUME_PROMPT='You were just preempted by a Mithril spot interruption and resumed on a new instance. /workspace and your prior session are bind-mounted from host-persistent storage, so they survived intact. Read /workspace/STATUS.md if present, check `git log` and the working-tree state, then continue carrying out doc/PLAN.md from where you left off. Once you have re-established context, run `rm -f /workspace/.shutdown-acked` so the next preemption is handled cleanly.'
 
-# Decide whether the chosen profile has a session to resume.
 case "$PROFILE" in
   claude)         RESUMING="$HAS_CLAUDE_SESSION" ;;
   pi-ollama|pi-azure|pi-or) RESUMING="$HAS_PI_SESSION" ;;
@@ -94,18 +84,12 @@ case "$PROFILE" in
 esac
 
 if [ "$RESUMING" = 1 ]; then
-  echo "run.sh: resuming $PROFILE session from $STATE_DIR (rm -rf $STATE_DIR to start fresh)" >&2
-else
-  echo "run.sh: starting fresh $PROFILE session in $STATE_DIR" >&2
-fi
-
-# `claude --continue` and `pi -c` both resume the most recent session in the
-# current cwd; sessions live in the bind-mounted state dirs.
-if [ "$RESUMING" = 1 ]; then
+  echo "run.sh: resuming $PROFILE in $STATE_DIR (rm -rf $STATE_DIR to start fresh)" >&2
   CLAUDE_RESUME=(--continue)
   PI_RESUME=(-c)
   EFFECTIVE_PROMPT="$RESUME_PROMPT"
 else
+  echo "run.sh: starting fresh $PROFILE in $STATE_DIR" >&2
   CLAUDE_RESUME=()
   PI_RESUME=()
   EFFECTIVE_PROMPT="$PROMPT"
@@ -141,8 +125,11 @@ case "$PROFILE" in
   pi-or)
     ENTRYPOINT=/home/ubuntu/.npm-global/bin/pi
     : "${OPENROUTER_API_KEY:?OPENROUTER_API_KEY must be set for pi-or}"
-    OR_PROMPT="$EFFECTIVE_PROMPT"
-    [ "$RESUMING" = 0 ] && OR_PROMPT='/skill:caveman\ncarry out doc/PLAN.md'
+    if [ "$RESUMING" = 1 ]; then
+      OR_PROMPT="$RESUME_PROMPT"
+    else
+      OR_PROMPT='/skill:caveman\ncarry out doc/PLAN.md'
+    fi
     ARGS=("${PI_RESUME[@]}" --provider openrouter --api-key "$OPENROUTER_API_KEY" --model moonshotai/kimi-k2.6 --thinking high "$OR_PROMPT")
     ;;
   bash)
