@@ -69,6 +69,12 @@ case "$PROFILE" in
   *)              RESUMING=0 ;;
 esac
 
+if [ "$RESUMING" = 1 ]; then
+  echo "run.sh: resuming $PROFILE session from $STATE_DIR (rm -rf $STATE_DIR to start fresh)" >&2
+else
+  echo "run.sh: starting fresh $PROFILE session in $STATE_DIR" >&2
+fi
+
 # `claude --continue` and `pi -c` both resume the most recent session in the
 # current cwd; sessions live in the bind-mounted state dirs.
 if [ "$RESUMING" = 1 ]; then
