@@ -49,18 +49,28 @@ ENVS=(
 PROMPT='/skill:caveman lite\ncarry out doc/PLAN.md'
 RESUME_PROMPT='You were just preempted by a Mithril spot interruption and resumed on a new instance. The container was snapshotted via docker commit, so /workspace and your prior session are intact. Read /workspace/STATUS.md if present, check `git log` and the working-tree state, then continue carrying out doc/PLAN.md from where you left off. Once you have re-established context, run `rm -f /workspace/.shutdown-acked` so the next preemption is handled cleanly.'
 
+# Resume flags per agent: `claude --continue` and `pi -c` both resume the
+# most recent session in the current cwd. Sessions live in
+# ~/.claude/projects/ and ~/.pi/agent/sessions/ respectively, both inside
+# the snapshotted writable layer.
+if [ "$RESUMING" = 1 ]; then
+  CLAUDE_RESUME=(--continue)
+  PI_RESUME=(-c)
+  EFFECTIVE_PROMPT="$RESUME_PROMPT"
+else
+  CLAUDE_RESUME=()
+  PI_RESUME=()
+  EFFECTIVE_PROMPT="$PROMPT"
+fi
+
 case "$PROFILE" in
   claude)
     ENTRYPOINT=claude
-    if [ "$RESUMING" = 1 ]; then
-      ARGS=(--continue --dangerously-skip-permissions --model claude-opus-4-6 --effort max "$RESUME_PROMPT")
-    else
-      ARGS=(--dangerously-skip-permissions --model claude-opus-4-6 --effort max "$PROMPT")
-    fi
+    ARGS=("${CLAUDE_RESUME[@]}" --dangerously-skip-permissions --model claude-opus-4-6 --effort max "$EFFECTIVE_PROMPT")
     ;;
   pi-ollama)
     ENTRYPOINT=/home/ubuntu/.npm-global/bin/pi
-    ARGS=(--provider ollama --model qwen3.6:35b --thinking max "$PROMPT")
+    ARGS=("${PI_RESUME[@]}" --provider ollama --model qwen3.6:35b --thinking max "$EFFECTIVE_PROMPT")
     ;;
   pi-azure)
     ENTRYPOINT=/home/ubuntu/.npm-global/bin/pi
@@ -71,10 +81,10 @@ case "$PROFILE" in
       exit 1
     elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
       ENVS+=(-e "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
-      ARGS=(--provider anthropic --model "${PI_MODEL:-claude-opus-4-7}" --thinking xhigh "$PROMPT")
+      ARGS=("${PI_RESUME[@]}" --provider anthropic --model "${PI_MODEL:-claude-opus-4-7}" --thinking xhigh "$EFFECTIVE_PROMPT")
     elif [ -n "${OPENAI_API_KEY:-}" ]; then
       ENVS+=(-e "OPENAI_API_KEY=$OPENAI_API_KEY")
-      ARGS=(--provider openai --model "${PI_MODEL:-gpt-5}" --thinking high "$PROMPT")
+      ARGS=("${PI_RESUME[@]}" --provider openai --model "${PI_MODEL:-gpt-5}" --thinking high "$EFFECTIVE_PROMPT")
     else
       echo "pi-azure: set ANTHROPIC_API_KEY or OPENAI_API_KEY" >&2
       exit 1
@@ -83,7 +93,9 @@ case "$PROFILE" in
   pi-or)
     ENTRYPOINT=/home/ubuntu/.npm-global/bin/pi
     : "${OPENROUTER_API_KEY:?OPENROUTER_API_KEY must be set for pi-or}"
-    ARGS=(--provider openrouter --api-key "$OPENROUTER_API_KEY" --model moonshotai/kimi-k2.6 --thinking high '/skill:caveman\ncarry out doc/PLAN.md')
+    OR_PROMPT="$EFFECTIVE_PROMPT"
+    [ "$RESUMING" = 0 ] && OR_PROMPT='/skill:caveman\ncarry out doc/PLAN.md'
+    ARGS=("${PI_RESUME[@]}" --provider openrouter --api-key "$OPENROUTER_API_KEY" --model moonshotai/kimi-k2.6 --thinking high "$OR_PROMPT")
     ;;
   bash)
     ENTRYPOINT=bash
