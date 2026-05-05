@@ -91,13 +91,10 @@ COPY --chown=${USER_UID}:${USER_GID} pi-extensions /tmp/pi-extensions
 RUN pi install /tmp/pi-extensions/azure-anthropic \
  && pi install /tmp/pi-extensions/azure-openai
 
-# Mithril spot-interruption handling: docker CLI (for `docker commit` against
-# the host-mounted socket), watcher + hook scripts, and Claude Code PreToolUse
-# hook configuration.
+# Mithril spot-interruption handling: entrypoint wrapper, signal-file
+# watcher, and Claude Code PreToolUse hook. Data persistence is handled
+# host-side via bind mounts in run.sh, not by this image.
 USER root
-RUN apt update \
- && apt install -y --no-install-recommends docker.io \
- && apt clean
 COPY ops/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY ops/mithril-watch.sh /usr/local/bin/mithril-watch.sh
 COPY ops/mithril-hook.sh /usr/local/bin/mithril-hook.sh

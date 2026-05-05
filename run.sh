@@ -9,50 +9,68 @@ case "$GPU" in
   *)   GPU_FLAG=(--gpus "device=$GPU") ;;
 esac
 
-CONTAINER_NAME="claude-agent-${PROFILE}-${GPU//,/_}"
-RESUME_TAG="claude-container:resume"
+# Persistent host state. /workspace, ~/.claude/projects (Claude Code session
+# logs), and ~/.pi/agent/sessions (pi session logs) are bind-mounted from
+# here so they survive container restarts and same-node-type Mithril spot
+# relocations (which preserve the root disk). Override with DIFFUSEMT_STATE.
+STATE_DIR="${DIFFUSEMT_STATE:-$PWD/state}"
+mkdir -p "$STATE_DIR"/{workspace,claude-projects,pi-sessions}
 
-# If a resume snapshot exists, prefer it over the freshly-built image. Cleared
-# manually with `docker rmi claude-container:resume` to start from scratch.
-IMAGE=claude-container
-RESUMING=0
-if docker image inspect "$RESUME_TAG" >/dev/null 2>&1; then
-  IMAGE="$RESUME_TAG"
-  RESUMING=1
-  echo "run.sh: resuming from $RESUME_TAG (rmi to start fresh)" >&2
+# Seed the workspace bind mount from the image on first run. Subsequent runs
+# pick up the agent's accumulated state. To start over from a clean image
+# workspace: rm -rf $STATE_DIR/workspace and re-run.
+if [ -z "$(ls -A "$STATE_DIR/workspace" 2>/dev/null)" ]; then
+  echo "run.sh: seeding $STATE_DIR/workspace from claude-container image..." >&2
+  cid=$(docker create claude-container)
+  docker cp "$cid:/workspace/." "$STATE_DIR/workspace/"
+  docker rm "$cid" >/dev/null
 fi
 
-# Mount Claude Code credentials from host if available
-MOUNTS=()
+# Resume only when there's actually a session for the agent we're launching.
+HAS_CLAUDE_SESSION=0
+HAS_PI_SESSION=0
+[ -n "$(find "$STATE_DIR/claude-projects" -name '*.jsonl' -print -quit 2>/dev/null)" ] \
+  && HAS_CLAUDE_SESSION=1
+[ -n "$(find "$STATE_DIR/pi-sessions" -name '*.jsonl' -print -quit 2>/dev/null)" ] \
+  && HAS_PI_SESSION=1
+
+MOUNTS=(
+  -v "$STATE_DIR/workspace:/workspace"
+  -v "$STATE_DIR/claude-projects:/home/ubuntu/.claude/projects"
+  -v "$STATE_DIR/pi-sessions:/home/ubuntu/.pi/agent/sessions"
+)
+
+# Reuse host Claude Code auth if available. Layered over the claude-projects
+# bind mount above (single-file mount wins for that one file).
 [ -f ~/.claude/.credentials.json ] \
   && MOUNTS+=(-v ~/.claude/.credentials.json:/home/ubuntu/.claude/.credentials.json)
 [ -f ~/.claude.json ] \
   && MOUNTS+=(-v ~/.claude.json:/home/ubuntu/.claude.json)
 
-# Mithril spot-interruption: signal file (read-only) + docker socket so the
-# in-container watcher can `docker commit` the running container into
-# claude-container:resume when STATUS_PREEMPTING / STATUS_RELOCATING is signaled.
+# Mithril spot-interruption signal file (read-only). The in-container watcher
+# polls it and SIGINTs the agent so it breaks out of long-running tool calls.
 [ -d /opt/mithril ] \
   && MOUNTS+=(-v /opt/mithril:/opt/mithril:ro)
-[ -S /var/run/docker.sock ] \
-  && MOUNTS+=(-v /var/run/docker.sock:/var/run/docker.sock)
 
 ENVS=(
   -e CLAUDE_CODE_THEME=dark
   -e CLAUDE_CODE_ACCEPT_TOS=yes
   -e CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=yes
   -e CLAUDE_CODE_SKIP_TRUST_SCREEN=1
-  -e "CONTAINER_NAME=$CONTAINER_NAME"
-  -e "RESUME_TAG=$RESUME_TAG"
 )
 
 PROMPT='/skill:caveman lite\ncarry out doc/PLAN.md'
-RESUME_PROMPT='You were just preempted by a Mithril spot interruption and resumed on a new instance. The container was snapshotted via docker commit, so /workspace and your prior session are intact. Read /workspace/STATUS.md if present, check `git log` and the working-tree state, then continue carrying out doc/PLAN.md from where you left off. Once you have re-established context, run `rm -f /workspace/.shutdown-acked` so the next preemption is handled cleanly.'
+RESUME_PROMPT='You were just preempted by a Mithril spot interruption and resumed on a new instance. /workspace and your prior session are bind-mounted from host-persistent storage, so they survived intact. Read /workspace/STATUS.md if present, check `git log` and the working-tree state, then continue carrying out doc/PLAN.md from where you left off. Once you have re-established context, run `rm -f /workspace/.shutdown-acked` so the next preemption is handled cleanly.'
 
-# Resume flags per agent: `claude --continue` and `pi -c` both resume the
-# most recent session in the current cwd. Sessions live in
-# ~/.claude/projects/ and ~/.pi/agent/sessions/ respectively, both inside
-# the snapshotted writable layer.
+# Decide whether the chosen profile has a session to resume.
+case "$PROFILE" in
+  claude)         RESUMING="$HAS_CLAUDE_SESSION" ;;
+  pi-ollama|pi-azure|pi-or) RESUMING="$HAS_PI_SESSION" ;;
+  *)              RESUMING=0 ;;
+esac
+
+# `claude --continue` and `pi -c` both resume the most recent session in the
+# current cwd; sessions live in the bind-mounted state dirs.
 if [ "$RESUMING" = 1 ]; then
   CLAUDE_RESUME=(--continue)
   PI_RESUME=(-c)
@@ -110,7 +128,6 @@ esac
 exec docker run \
   -it \
   --rm \
-  --name "$CONTAINER_NAME" \
   "${GPU_FLAG[@]}" \
   --network host \
   -u "$(id -u):$(id -g)" \
@@ -118,5 +135,5 @@ exec docker run \
   --entrypoint /usr/local/bin/entrypoint.sh \
   "${MOUNTS[@]}" \
   "${ENVS[@]}" \
-  "$IMAGE" \
+  claude-container \
   "$ENTRYPOINT" "${ARGS[@]}"
