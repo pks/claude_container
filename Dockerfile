@@ -90,3 +90,19 @@ COPY --chown=${USER_UID}:${USER_GID} models.json /home/${USERNAME}/.pi/agent/mod
 COPY --chown=${USER_UID}:${USER_GID} pi-extensions /tmp/pi-extensions
 RUN pi install /tmp/pi-extensions/azure-anthropic \
  && pi install /tmp/pi-extensions/azure-openai
+
+# Mithril spot-interruption handling: docker CLI (for `docker commit` against
+# the host-mounted socket), watcher + hook scripts, and Claude Code PreToolUse
+# hook configuration.
+USER root
+RUN apt update \
+ && apt install -y --no-install-recommends docker.io \
+ && apt clean
+COPY ops/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY ops/mithril-watch.sh /usr/local/bin/mithril-watch.sh
+COPY ops/mithril-hook.sh /usr/local/bin/mithril-hook.sh
+RUN chmod 0755 /usr/local/bin/entrypoint.sh \
+               /usr/local/bin/mithril-watch.sh \
+               /usr/local/bin/mithril-hook.sh
+USER ${USER_UID}:${USER_GID}
+COPY --chown=${USER_UID}:${USER_GID} ops/claude-settings.json /home/${USERNAME}/.claude/settings.json
