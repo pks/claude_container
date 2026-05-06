@@ -3,8 +3,8 @@ FROM ubuntu:24.04
 ARG USERNAME=ubuntu
 ARG USER_UID=1000
 ARG USER_GID=1000
-ARG GPU_ARCH=ampere
-ARG CUDA_VERSION=cu126
+ARG GPU_ARCH=blackwell
+ARG CUDA_VERSION=cu130
 
 # System packages
 RUN apt update && apt upgrade -y && apt dist-upgrade -y \
@@ -56,7 +56,7 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
 RUN uv init --python 3.12 \
  && sed -i 's/requires-python.*/requires-python = "==3.12.*"/' pyproject.toml \
  && printf '\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n' "${CUDA_VERSION}" >> pyproject.toml \
- && uv add torch lightning datasets sacrebleu sentencepiece tensorboard tbparse transformers einops huggingface-hub \
+ && uv add torch datasets sacrebleu sentencepiece tensorboard tbparse \
  && case "${GPU_ARCH}" in \
       ampere)    uv pip install packaging wheel psutil && uv pip install flash-attn --no-build-isolation;; \
       blackwell) uv pip install 'flash-attn-4[cu13]' --prerelease=allow;; \
@@ -83,9 +83,9 @@ RUN mkdir tools \
  && cd tools/fast_align/build && cmake .. && make -j$(nproc)
 ENV PATH="$PATH:/workspace/tools/fast_align/build"
 
-# Project structure + pi extension. plan/PLAN.md is bind-mounted from the
-# host at run time (run.sh) rather than copied in, so edits propagate
-# without rebuilding.
+# Project structure + pi extension. plan/PLAN.md is dropped into doc/ by
+# `make seed` rather than baked in, so it lives in $STATE_DIR alongside the
+# rest of the working tree.
 RUN mkdir src doc d ckpt log
 COPY --chown=${USER_UID}:${USER_GID} models.json /home/${USERNAME}/.pi/agent/models.json
 COPY --chown=${USER_UID}:${USER_GID} pi-extensions /tmp/pi-extensions
@@ -104,10 +104,3 @@ RUN chmod 0755 /usr/local/bin/entrypoint.sh \
                /usr/local/bin/mithril-hook.sh
 USER ${USER_UID}:${USER_GID}
 COPY --chown=${USER_UID}:${USER_GID} ops/claude-settings.json /home/${USERNAME}/.claude/settings.json
-
-# Image version: content hash of build inputs (Dockerfile + ops + models.json
-# + pi-extensions). Set by the Makefile via --build-arg. run.sh reads this
-# label to detect when state is stale w.r.t. the current image.
-ARG IMAGE_VERSION=unknown
-LABEL diffusemt.version=${IMAGE_VERSION}
-ENV DIFFUSEMT_IMAGE_VERSION=${IMAGE_VERSION}

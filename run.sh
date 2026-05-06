@@ -4,6 +4,11 @@ set -eu
 PROFILE="${1:-claude}"
 GPU="${2:-all}"
 
+# Auto-source .env so the script-side dispatch (e.g. pi-azure key selection)
+# sees what a user has put there. The same vars are forwarded into the
+# container by the passthrough loop further down.
+[ -f .env ] && set -a && . ./.env && set +a
+
 case "$GPU" in
   all) GPU_FLAG=(--gpus all) ;;
   *)   GPU_FLAG=(--gpus "device=$GPU") ;;
@@ -12,44 +17,13 @@ esac
 # /workspace and /home/ubuntu bind-mount from $STATE_DIR so code, ckpts,
 # sessions, plugins, npm-global, etc. survive container exits and same-
 # node-type Mithril spot relocations (which preserve the root disk).
-STATE_DIR="${DIFFUSEMT_STATE:-$PWD/state}"
-mkdir -p "$STATE_DIR"/{workspace,home}
-
-seeded=0
-seed_from_image() {
-  local src="$1" dst="$2"
-  [ -n "$(ls -A "$dst" 2>/dev/null)" ] && return 0
-  echo "run.sh: seeding $dst <- $src" >&2
-  local cid
-  cid=$(docker create claude-container)
-  docker cp "$cid:$src/." "$dst/"
-  docker rm "$cid" >/dev/null
-  seeded=1
-}
-seed_from_image /workspace      "$STATE_DIR/workspace"
-seed_from_image /home/ubuntu    "$STATE_DIR/home"
-
-# Refuse to start when state was seeded against a different image — the
-# image-side bits in /home/ubuntu/ (settings.json, plugins, npm globals)
-# won't reach the bind-mounted home, so behavior diverges silently.
-# Override with DIFFUSEMT_FORCE=1.
-IMAGE_VERSION=$(docker image inspect claude-container --format '{{index .Config.Labels "diffusemt.version"}}' 2>/dev/null || true)
-[ -z "$IMAGE_VERSION" ] && IMAGE_VERSION=unknown
-SEED_VERSION_FILE="$STATE_DIR/.image-version"
-if [ "$seeded" = 1 ] || [ ! -f "$SEED_VERSION_FILE" ]; then
-  echo "$IMAGE_VERSION" > "$SEED_VERSION_FILE"
-elif [ "$(cat "$SEED_VERSION_FILE")" != "$IMAGE_VERSION" ] && [ "${DIFFUSEMT_FORCE:-}" != 1 ]; then
-  echo "run.sh: state seeded against image $(cat "$SEED_VERSION_FILE"), current is $IMAGE_VERSION" >&2
-  echo "run.sh: rm -rf $STATE_DIR/home (and/or $STATE_DIR/workspace) to re-seed, or DIFFUSEMT_FORCE=1 to override" >&2
+# `make seed` populates $STATE_DIR from the image.
+IMAGE="${IMAGE:-claude-container}"
+STATE_DIR="${STATE_DIR:-$PWD/state}"
+if [ ! -d "$STATE_DIR/workspace" ] || [ ! -d "$STATE_DIR/home" ]; then
+  echo "run.sh: $STATE_DIR is not seeded — run 'make seed' first" >&2
   exit 1
 fi
-
-HAS_CLAUDE_SESSION=0
-HAS_PI_SESSION=0
-[ -n "$(find "$STATE_DIR/home/.claude/projects" -name '*.jsonl' -print -quit 2>/dev/null)" ] \
-  && HAS_CLAUDE_SESSION=1
-[ -n "$(find "$STATE_DIR/home/.pi/agent/sessions" -name '*.jsonl' -print -quit 2>/dev/null)" ] \
-  && HAS_PI_SESSION=1
 
 MOUNTS=(
   -v "$STATE_DIR/workspace:/workspace"
@@ -62,10 +36,6 @@ MOUNTS=(
 [ -f ~/.claude.json ] \
   && MOUNTS+=(-v ~/.claude.json:/home/ubuntu/.claude.json)
 
-# Task brief, sourced live from the host so edits don't require a rebuild.
-[ -f "$PWD/plan/PLAN.md" ] \
-  && MOUNTS+=(-v "$PWD/plan/PLAN.md:/workspace/doc/PLAN.md:ro")
-
 # Mithril spot signal — the in-container watcher polls it and SIGINTs the
 # agent on preemption.
 [ -d /opt/mithril ] \
@@ -77,18 +47,36 @@ ENVS=(
   -e CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=yes
   -e CLAUDE_CODE_SKIP_TRUST_SCREEN=1
 )
+# Forward every variable declared in .env into the container — adding one
+# there auto-propagates without script changes. (.env is also sourced at
+# the top of this script so the dispatch logic below can read the values.)
+if [ -f .env ]; then
+  while IFS= read -r name; do
+    ENVS+=(-e "$name")
+  done < <(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=.*/\2/p' .env)
+fi
 
-PROMPT='/skill:caveman lite\ncarry out doc/PLAN.md'
+# Per-profile session location and fresh-start prompt. The resume prompt is
+# shared across profiles; only the fresh prompt varies (pi-or runs full
+# caveman rather than caveman lite).
+case "$PROFILE" in
+  claude)                   SESSION_DIR=.claude/projects ;;
+  pi-ollama|pi-azure|pi-or) SESSION_DIR=.pi/agent/sessions ;;
+  *)                        SESSION_DIR= ;;
+esac
+case "$PROFILE" in
+  pi-or) FRESH_PROMPT='/skill:caveman\ncarry out doc/PLAN.md' ;;
+  *)     FRESH_PROMPT='/skill:caveman lite\ncarry out doc/PLAN.md' ;;
+esac
 RESUME_PROMPT='You were just preempted by a Mithril spot interruption and resumed on a new instance. /workspace and your prior session are bind-mounted from host-persistent storage, so they survived intact. Read /workspace/STATUS.md if present, check `git log` and the working-tree state, then continue carrying out doc/PLAN.md from where you left off. Once you have re-established context, run `rm -f /workspace/.shutdown-acked` so the next preemption is handled cleanly.'
 
-case "$PROFILE" in
-  claude)         RESUMING="$HAS_CLAUDE_SESSION" ;;
-  pi-ollama|pi-azure|pi-or) RESUMING="$HAS_PI_SESSION" ;;
-  *)              RESUMING=0 ;;
-esac
+RESUMING=0
+[ -n "$SESSION_DIR" ] \
+  && [ -n "$(find "$STATE_DIR/home/$SESSION_DIR" -name '*.jsonl' -print -quit 2>/dev/null)" ] \
+  && RESUMING=1
 
 if [ "$RESUMING" = 1 ]; then
-  echo "run.sh: resuming $PROFILE in $STATE_DIR (rm -rf $STATE_DIR to start fresh)" >&2
+  echo "run.sh: resuming $PROFILE in $STATE_DIR (make reseed to start fresh)" >&2
   CLAUDE_RESUME=(--continue)
   PI_RESUME=(-c)
   EFFECTIVE_PROMPT="$RESUME_PROMPT"
@@ -96,7 +84,7 @@ else
   echo "run.sh: starting fresh $PROFILE in $STATE_DIR" >&2
   CLAUDE_RESUME=()
   PI_RESUME=()
-  EFFECTIVE_PROMPT="$PROMPT"
+  EFFECTIVE_PROMPT="$FRESH_PROMPT"
 fi
 
 case "$PROFILE" in
@@ -111,15 +99,12 @@ case "$PROFILE" in
   pi-azure)
     ENTRYPOINT=/home/ubuntu/.npm-global/bin/pi
     : "${AZURE_BASE_URL:?AZURE_BASE_URL must be set for pi-azure}"
-    ENVS+=(-e "AZURE_BASE_URL=$AZURE_BASE_URL")
     if [ -n "${ANTHROPIC_API_KEY:-}" ] && [ -n "${OPENAI_API_KEY:-}" ]; then
       echo "pi-azure: set only one of ANTHROPIC_API_KEY or OPENAI_API_KEY" >&2
       exit 1
     elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-      ENVS+=(-e "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY")
       ARGS=("${PI_RESUME[@]}" --provider anthropic --model "${PI_MODEL:-claude-opus-4-7}" --thinking xhigh "$EFFECTIVE_PROMPT")
     elif [ -n "${OPENAI_API_KEY:-}" ]; then
-      ENVS+=(-e "OPENAI_API_KEY=$OPENAI_API_KEY")
       ARGS=("${PI_RESUME[@]}" --provider openai --model "${PI_MODEL:-gpt-5}" --thinking high "$EFFECTIVE_PROMPT")
     else
       echo "pi-azure: set ANTHROPIC_API_KEY or OPENAI_API_KEY" >&2
@@ -129,12 +114,7 @@ case "$PROFILE" in
   pi-or)
     ENTRYPOINT=/home/ubuntu/.npm-global/bin/pi
     : "${OPENROUTER_API_KEY:?OPENROUTER_API_KEY must be set for pi-or}"
-    if [ "$RESUMING" = 1 ]; then
-      OR_PROMPT="$RESUME_PROMPT"
-    else
-      OR_PROMPT='/skill:caveman\ncarry out doc/PLAN.md'
-    fi
-    ARGS=("${PI_RESUME[@]}" --provider openrouter --api-key "$OPENROUTER_API_KEY" --model moonshotai/kimi-k2.6 --thinking high "$OR_PROMPT")
+    ARGS=("${PI_RESUME[@]}" --provider openrouter --api-key "$OPENROUTER_API_KEY" --model moonshotai/kimi-k2.6 --thinking high "$EFFECTIVE_PROMPT")
     ;;
   bash)
     ENTRYPOINT=bash
@@ -156,5 +136,5 @@ exec docker run \
   --entrypoint /usr/local/bin/entrypoint.sh \
   "${MOUNTS[@]}" \
   "${ENVS[@]}" \
-  claude-container \
+  "$IMAGE" \
   "$ENTRYPOINT" "${ARGS[@]}"
