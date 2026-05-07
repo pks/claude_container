@@ -3,8 +3,8 @@ FROM ubuntu:24.04
 ARG USERNAME=ubuntu
 ARG USER_UID=1000
 ARG USER_GID=1000
-ARG GPU_ARCH=ampere
-ARG CUDA_VERSION=cu126
+ARG GPU_ARCH=blackwell
+ARG CUDA_VERSION=cu130
 
 # System packages
 RUN apt update && apt upgrade -y && apt dist-upgrade -y \
@@ -55,8 +55,8 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
 # Python environment
 RUN uv init --python 3.12 \
  && sed -i 's/requires-python.*/requires-python = "==3.12.*"/' pyproject.toml \
- && printf '\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n' "${CUDA_VERSION}" >> pyproject.toml \
- && uv add torch lightning datasets sacrebleu sentencepiece tensorboard tbparse transformers einops huggingface-hub \
+ && printf '\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n\n[tool.uv.exclude-newer-package]\ndatasets = "1 day"\nsacrebleu = "1 day"\nsentencepiece = "1 day"\ntensorboard = "1 day"\ntbparse = "1 day"\n' "${CUDA_VERSION}" >> pyproject.toml \
+ && uv add torch datasets sacrebleu sentencepiece tensorboard tbparse \
  && case "${GPU_ARCH}" in \
       ampere)    uv pip install packaging wheel psutil && uv pip install flash-attn --no-build-isolation;; \
       blackwell) uv pip install 'flash-attn-4[cu13]' --prerelease=allow;; \
@@ -83,10 +83,24 @@ RUN mkdir tools \
  && cd tools/fast_align/build && cmake .. && make -j$(nproc)
 ENV PATH="$PATH:/workspace/tools/fast_align/build"
 
-# Project structure + pi extension
+# Project structure + pi extension. plan/PLAN.md is dropped into doc/ by
+# `make seed` rather than baked in, so it lives in $STATE_DIR alongside the
+# rest of the working tree.
 RUN mkdir src doc d ckpt log
-COPY --chown=${USER_UID}:${USER_GID} plan/PLAN.md /workspace/doc/PLAN.md
 COPY --chown=${USER_UID}:${USER_GID} models.json /home/${USERNAME}/.pi/agent/models.json
 COPY --chown=${USER_UID}:${USER_GID} pi-extensions /tmp/pi-extensions
 RUN pi install /tmp/pi-extensions/azure-anthropic \
  && pi install /tmp/pi-extensions/azure-openai
+
+# Mithril spot-interruption handling: entrypoint wrapper, signal-file
+# watcher, and Claude Code PreToolUse hook. Data persistence is handled
+# host-side via bind mounts in run.sh, not by this image.
+USER root
+COPY ops/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY ops/mithril-watch.sh /usr/local/bin/mithril-watch.sh
+COPY ops/mithril-hook.sh /usr/local/bin/mithril-hook.sh
+RUN chmod 0755 /usr/local/bin/entrypoint.sh \
+               /usr/local/bin/mithril-watch.sh \
+               /usr/local/bin/mithril-hook.sh
+USER ${USER_UID}:${USER_GID}
+COPY --chown=${USER_UID}:${USER_GID} ops/claude-settings.json /home/${USERNAME}/.claude/settings.json
