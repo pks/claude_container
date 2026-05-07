@@ -27,18 +27,18 @@ seed: image
 	@mkdir -p $(STATE_DIR)/workspace $(STATE_DIR)/home
 	@if [ -n "$$(ls -A $(STATE_DIR)/workspace 2>/dev/null)" ] || [ -n "$$(ls -A $(STATE_DIR)/home 2>/dev/null)" ]; then \
 	  echo "$(STATE_DIR) is already seeded — run 'make reseed' to wipe and redo"; \
-	  exit 0; \
+	else \
+	  echo "seeding $(STATE_DIR) from $(IMAGE)"; \
+	  cid=$$(docker create $(IMAGE)) \
+	    && docker cp $$cid:/workspace/. $(STATE_DIR)/workspace/ \
+	    && docker cp $$cid:/home/ubuntu/. $(STATE_DIR)/home/ \
+	    && docker rm $$cid >/dev/null \
+	    && cp plan/PLAN.md $(STATE_DIR)/workspace/doc/PLAN.md; \
 	fi
-	@echo "seeding $(STATE_DIR) from $(IMAGE)"
-	@cid=$$(docker create $(IMAGE)) \
-	  && docker cp $$cid:/workspace/. $(STATE_DIR)/workspace/ \
-	  && docker cp $$cid:/home/ubuntu/. $(STATE_DIR)/home/ \
-	  && docker rm $$cid >/dev/null
-	@cp plan/PLAN.md $(STATE_DIR)/workspace/doc/PLAN.md
 
 reseed:
 	rm -rf $(STATE_DIR)
 	$(MAKE) seed
 
-run: seed
+run:
 	./run.sh $(PROFILE) $(GPU)
