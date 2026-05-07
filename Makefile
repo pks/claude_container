@@ -25,8 +25,19 @@ image:
 # want after image rebuilds that touch /home/ubuntu).
 seed: image
 	@mkdir -p $(STATE_DIR)/workspace $(STATE_DIR)/home
-	@if [ -n "$$(ls -A $(STATE_DIR)/workspace 2>/dev/null)" ] || [ -n "$$(ls -A $(STATE_DIR)/home 2>/dev/null)" ]; then \
+	@ws=0; hm=0; \
+	[ -n "$$(ls -A $(STATE_DIR)/workspace 2>/dev/null)" ] && ws=1; \
+	[ -n "$$(ls -A $(STATE_DIR)/home 2>/dev/null)" ] && hm=1; \
+	if [ "$$ws" = 1 ] && [ "$$hm" = 1 ]; then \
 	  echo "$(STATE_DIR) is already seeded — run 'make reseed' to wipe and redo"; \
+	elif [ "$$ws" = 1 ] || [ "$$hm" = 1 ]; then \
+	  echo "make seed: $(STATE_DIR) is partially seeded (workspace=$$ws, home=$$hm) — likely from an interrupted seed." >&2; \
+	  echo "  Run 'make reseed' to wipe and redo." >&2; \
+	  exit 1; \
+	elif [ ! -f plan/PLAN.md ]; then \
+	  echo "make seed: plan/PLAN.md is missing (plan/ is gitignored, so a clean clone won't have it)." >&2; \
+	  echo "  Create plan/PLAN.md describing what the agent should carry out, then re-run 'make seed'." >&2; \
+	  exit 1; \
 	else \
 	  echo "seeding $(STATE_DIR) from $(IMAGE)"; \
 	  cid=$$(docker create $(IMAGE)) \

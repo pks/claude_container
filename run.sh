@@ -4,10 +4,27 @@ set -eu
 PROFILE="${1:-claude}"
 GPU="${2:-all}"
 
-# Auto-source .env so the script-side dispatch (e.g. pi-azure key selection)
-# sees what a user has put there. The same vars are forwarded into the
-# container by the passthrough loop further down.
-[ -f .env ] && set -a && . ./.env && set +a
+# Parse .env into the host shell (for script-side dispatch like pi-azure
+# key selection) and collect the names so we can forward them to the
+# container below. Sourced with `.` it would execute as shell code under
+# `set -eu` — risky for a secrets file and brittle around values with
+# command substitutions or unescaped metacharacters. Each line is treated
+# as a literal KEY=VALUE; one surrounding pair of matching quotes is
+# stripped, otherwise values are passed through verbatim.
+ENV_NAMES_FROM_FILE=()
+if [ -f .env ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    [[ "$line" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+    name="${BASH_REMATCH[2]}"
+    val="${BASH_REMATCH[3]}"
+    case "$val" in
+      \"*\") val="${val#\"}"; val="${val%\"}" ;;
+      \'*\') val="${val#\'}"; val="${val%\'}" ;;
+    esac
+    export "$name=$val"
+    ENV_NAMES_FROM_FILE+=("$name")
+  done < .env
+fi
 
 case "$GPU" in
   all) GPU_FLAG=(--gpus all) ;;
@@ -48,12 +65,12 @@ ENVS=(
   -e CLAUDE_CODE_SKIP_TRUST_SCREEN=1
 )
 # Forward every variable declared in .env into the container — adding one
-# there auto-propagates without script changes. (.env is also sourced at
-# the top of this script so the dispatch logic below can read the values.)
-if [ -f .env ]; then
-  while IFS= read -r name; do
+# there auto-propagates without script changes. Names came from the safe
+# parser above; `-e VAR` (no value) tells docker to pull from our env.
+if [ "${#ENV_NAMES_FROM_FILE[@]}" -gt 0 ]; then
+  for name in "${ENV_NAMES_FROM_FILE[@]}"; do
     ENVS+=(-e "$name")
-  done < <(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=.*/\2/p' .env)
+  done
 fi
 
 # Per-profile session location and fresh-start prompt. The resume prompt is
@@ -99,12 +116,17 @@ case "$PROFILE" in
   pi-azure)
     ENTRYPOINT=/home/ubuntu/.npm-global/bin/pi
     : "${AZURE_BASE_URL:?AZURE_BASE_URL must be set for pi-azure}"
+    # Forward explicitly: the .env passthrough above only catches vars
+    # listed in .env, but users may export these in their shell instead.
+    ENVS+=(-e AZURE_BASE_URL)
     if [ -n "${ANTHROPIC_API_KEY:-}" ] && [ -n "${OPENAI_API_KEY:-}" ]; then
       echo "pi-azure: set only one of ANTHROPIC_API_KEY or OPENAI_API_KEY" >&2
       exit 1
     elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+      ENVS+=(-e ANTHROPIC_API_KEY)
       ARGS=("${PI_RESUME[@]}" --provider anthropic --model "${PI_MODEL:-claude-opus-4-7}" --thinking xhigh "$EFFECTIVE_PROMPT")
     elif [ -n "${OPENAI_API_KEY:-}" ]; then
+      ENVS+=(-e OPENAI_API_KEY)
       ARGS=("${PI_RESUME[@]}" --provider openai --model "${PI_MODEL:-gpt-5}" --thinking high "$EFFECTIVE_PROMPT")
     else
       echo "pi-azure: set ANTHROPIC_API_KEY or OPENAI_API_KEY" >&2
