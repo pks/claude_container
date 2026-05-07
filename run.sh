@@ -85,7 +85,7 @@ case "$PROFILE" in
   pi-or) FRESH_PROMPT='/skill:caveman\ncarry out doc/PLAN.md' ;;
   *)     FRESH_PROMPT='/skill:caveman lite\ncarry out doc/PLAN.md' ;;
 esac
-RESUME_PROMPT='You were just preempted by a Mithril spot interruption and resumed on a new instance. /workspace and your prior session are bind-mounted from host-persistent storage, so they survived intact. Read /workspace/STATUS.md if present, check `git log` and the working-tree state, then continue carrying out doc/PLAN.md from where you left off. Once you have re-established context, run `rm -f /workspace/.shutdown-acked` so the next preemption is handled cleanly.'
+RESUME_PROMPT='Your prior session was interrupted (Mithril spot preemption or a manual exit) and is now being resumed. /workspace and your prior session are bind-mounted from host-persistent storage, so they survived intact. Read /workspace/STATUS.md if present, check `git log` and the working-tree state, then continue carrying out doc/PLAN.md from where you left off. Once you have re-established context, run `rm -f /workspace/.shutdown-acked` so any future preemption is handled cleanly.'
 
 RESUMING=0
 [ -n "$SESSION_DIR" ] \
