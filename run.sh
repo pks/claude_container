@@ -127,7 +127,7 @@ case "$PROFILE" in
       ARGS=("${PI_RESUME[@]}" --provider anthropic --model "${PI_MODEL:-claude-opus-4-7}" --thinking xhigh "$EFFECTIVE_PROMPT")
     elif [ -n "${OPENAI_API_KEY:-}" ]; then
       ENVS+=(-e OPENAI_API_KEY)
-      ARGS=("${PI_RESUME[@]}" --provider openai --model "${PI_MODEL:-gpt-5}" --thinking high "$EFFECTIVE_PROMPT")
+      ARGS=("${PI_RESUME[@]}" --provider openai --model "${PI_MODEL:-gpt-5.5}" --thinking xhigh "$EFFECTIVE_PROMPT")
     else
       echo "pi-azure: set ANTHROPIC_API_KEY or OPENAI_API_KEY" >&2
       exit 1

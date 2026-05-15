@@ -10,7 +10,7 @@ ARG CUDA_VERSION=cu130
 RUN apt update && apt upgrade -y && apt dist-upgrade -y \
  && apt install -y --no-install-recommends \
       ca-certificates curl less git procps sudo unzip gnupg2 gh jq \
-      cmake g++ make \
+      cmake g++ make ripgrep fd-find \
  && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
  && apt install -y nodejs \
  && apt autoremove && apt clean
