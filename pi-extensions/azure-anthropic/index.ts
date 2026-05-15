@@ -1,23 +1,18 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-function upgradeCacheTtl(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(upgradeCacheTtl);
+function upgradeCacheTtlInPlace(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const item of value) upgradeCacheTtlInPlace(item);
+    return;
+  }
   if (value && typeof value === "object") {
     const obj = value as Record<string, unknown>;
-    const isCacheControl =
-      obj.type === "ephemeral" &&
-      Object.prototype.hasOwnProperty.call(obj, "type") &&
-      !Array.isArray(obj);
-    if (isCacheControl) {
-      return { ...obj, ttl: "1h" };
+    if (obj.type === "ephemeral") {
+      obj.ttl = "1h";
+      return;
     }
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(obj)) {
-      out[k] = upgradeCacheTtl(v);
-    }
-    return out;
+    for (const v of Object.values(obj)) upgradeCacheTtlInPlace(v);
   }
-  return value;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -25,10 +20,19 @@ export default function (pi: ExtensionAPI) {
   if (!base) throw new Error("AZURE_BASE_URL is not set");
   pi.registerProvider("anthropic", {
     baseUrl: `${base.replace(/\/$/, "")}/anthropic`,
+    // 1h TTL is gated behind a beta flag; without it the server ignores or
+    // rejects ttl: "1h" on cache_control markers.
+    headers: {
+      "anthropic-beta": "extended-cache-ttl-2025-04-11",
+    },
   });
 
   // Upgrade every cache_control: { type: "ephemeral" } to ttl: "1h" so cached
   // prefixes survive long pauses between turns. 1h writes cost $10/M vs $6.25/M
   // for 5-min, but break-even is ~1.6 reads — easily met on multi-turn sessions.
-  pi.on("before_provider_request", (event) => upgradeCacheTtl(event.payload));
+  // Mutates event.payload in place so this works regardless of whether the hook
+  // API uses the return value.
+  pi.on("before_provider_request", (event) => {
+    upgradeCacheTtlInPlace(event.payload);
+  });
 }
