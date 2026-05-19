@@ -52,7 +52,7 @@ Profiles:
 |-------------|------------------------------------------------------------------|
 | `claude`    | Claude Code, `claude-opus-4-6`, `--effort max`                   |
 | `pi-ollama` | pi against a local Ollama (`qwen3.6:35b`)                        |
-| `pi-azure`  | pi against Azure; set `AZURE_BASE_URL` and one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` |
+| `pi-azure`  | pi against Azure; set `AZURE_BASE_URL` and one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`. Override the model with `PI_MODEL=...` (e.g. `PI_MODEL=DeepSeek-V4-Pro` for DeepSeek on Azure AI Foundry) |
 | `pi-or`     | pi against OpenRouter (`moonshotai/kimi-k2.6`); needs `OPENROUTER_API_KEY` |
 | `bash`      | Drop into a shell in the container                               |
 

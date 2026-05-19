@@ -1,5 +1,25 @@
 {
   "providers": {
+    "openai": {
+      "models": [
+        {
+          "id": "DeepSeek-V4-Pro",
+          "name": "DeepSeek V4 Pro",
+          "api": "openai-completions",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": null,
+            "medium": null,
+            "high": "high",
+            "xhigh": "max"
+          },
+          "input": ["text"],
+          "contextWindow": 1000000,
+          "maxTokens": 384000
+        }
+      ]
+    },
     "ollama": {
       "api": "openai-completions",
       "apiKey": "ollama",

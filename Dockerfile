@@ -73,7 +73,7 @@ RUN claude plugin marketplace add JuliusBrussee/caveman \
  && claude plugin install caveman@caveman \
  && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
  && npm config set prefix '~/.npm-global' \
- && npm install -g @mariozechner/pi-coding-agent \
+ && npm install -g @mariozechner/pi-coding-agent@0.73.1 \
  && npx skills add JuliusBrussee/caveman --yes
 
 # Tools
@@ -90,7 +90,8 @@ RUN mkdir src doc d ckpt log
 COPY --chown=${USER_UID}:${USER_GID} models.json /home/${USERNAME}/.pi/agent/models.json
 COPY --chown=${USER_UID}:${USER_GID} pi-extensions /tmp/pi-extensions
 RUN pi install /tmp/pi-extensions/azure-anthropic \
- && pi install /tmp/pi-extensions/azure-openai
+ && pi install /tmp/pi-extensions/azure-openai \
+ && pi install npm:pi-web-access
 
 # Mithril spot-interruption handling: entrypoint wrapper, signal-file
 # watcher, and Claude Code PreToolUse hook. Data persistence is handled
