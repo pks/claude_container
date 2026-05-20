@@ -10,7 +10,10 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 // identified.
 
 const LOG_PATH = process.env.PI_GEMINI_DEBUG_LOG ?? "/workspace/log/gemini-debug.log";
-const BASE_URL_PREFIX = "https://generativelanguage.googleapis.com/v1beta/openai";
+// Match both the OpenAI-compat layer and the native Gemini endpoint. pi-coding-agent
+// routes --provider gemini through @google/genai which hits the native API, but the
+// compat URL is included so the same extension catches future config changes.
+const URL_MATCH = /generativelanguage\.googleapis\.com/;
 const SENTINEL = Symbol.for("diffusemt.geminiDebugFetchPatched");
 
 function logLine(label: string, body: string): void {
@@ -39,7 +42,7 @@ function installFetchLogger(): void {
   const wrapped = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url =
       typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (!url.startsWith(BASE_URL_PREFIX)) return originalFetch(input, init);
+    if (!URL_MATCH.test(url)) return originalFetch(input, init);
 
     const response = await originalFetch(input, init);
     // Tee the body so the SDK still sees an unread stream.
