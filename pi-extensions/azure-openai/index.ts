@@ -12,7 +12,11 @@ const AZURE_TRANSIENT_PATTERNS = [/no error details in response/i];
 
 export default function (pi: ExtensionAPI) {
   const base = process.env.AZURE_BASE_URL;
-  if (!base) throw new Error("AZURE_BASE_URL is not set");
+  if (!base) {
+    // See azure-anthropic for rationale: silently skip when not on the
+    // pi-azure profile so other profiles' startup stays quiet.
+    return;
+  }
   pi.registerProvider("openai", {
     baseUrl: `${base.replace(/\/$/, "")}/openai/v1`,
   });

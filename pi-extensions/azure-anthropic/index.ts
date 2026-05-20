@@ -18,7 +18,13 @@ function upgradeCacheTtlInPlace(value: unknown): void {
 
 export default function (pi: ExtensionAPI) {
   const base = process.env.AZURE_BASE_URL;
-  if (!base) throw new Error("AZURE_BASE_URL is not set");
+  if (!base) {
+    // Extensions load on every pi startup regardless of profile. pi-gemini /
+    // pi-or runs don't set AZURE_BASE_URL — throw here would surface a loud
+    // load error every time. Silently no-op instead; pi-azure's run.sh sets
+    // the var explicitly and a missing value there would have failed earlier.
+    return;
+  }
   pi.registerProvider("anthropic", {
     baseUrl: `${base.replace(/\/$/, "")}/anthropic`,
     // 1h TTL is gated behind a beta flag; without it the server ignores or
