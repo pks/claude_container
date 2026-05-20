@@ -2,27 +2,17 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-// Two responsibilities:
-//
-// 1. Strip OpenAI-only fields from outgoing payloads. pi-coding-agent's
-//    openai-completions provider injects fields like `store` (an OpenAI
-//    Responses-API control) that Gemini's OpenAI-compat layer rejects with
-//    a 400 ("Unknown name \"store\": Cannot find field."). pi-ai surfaces the
-//    rejection as a body-less error because its client doesn't unwrap the
-//    gzip'd error body, so without this normalization every turn fails.
-//
-// 2. Log the request payload (via before_provider_request) and raw HTTP
-//    response (via a fetch wrapper) to PI_GEMINI_DEBUG_LOG. Optional —
-//    enable by leaving the default log path writable. Useful for catching
-//    future incompatibilities the same way `store` was caught.
+// Opt-in diagnostic for pi-gemini. When PI_GEMINI_DEBUG is set to a truthy
+// value, dumps the outgoing payload (via before_provider_request) and the raw
+// HTTP response (via a fetch wrapper) for every generativelanguage.googleapis.com
+// call to PI_GEMINI_DEBUG_LOG. Useful for catching new Gemini incompatibilities
+// the same way the `store`/thought_signature bugs were caught — but off by
+// default so production runs don't accumulate logs.
 
 const LOG_PATH = process.env.PI_GEMINI_DEBUG_LOG ?? "/workspace/log/gemini-debug.log";
+const ENABLED = /^(1|true|yes|on)$/i.test(process.env.PI_GEMINI_DEBUG ?? "");
 const URL_MATCH = /generativelanguage\.googleapis\.com/;
 const SENTINEL = Symbol.for("diffusemt.geminiDebugFetchPatched");
-
-// Fields pi-coding-agent sends that Gemini's OpenAI-compat layer rejects.
-// Add to this list when a new incompatibility surfaces in the debug log.
-const UNSUPPORTED_FIELDS = ["store"] as const;
 
 function logLine(label: string, body: string): void {
   try {
@@ -78,15 +68,12 @@ function installFetchLogger(): void {
 }
 
 export default function (pi: ExtensionAPI) {
+  if (!ENABLED) return;
+
   installFetchLogger();
 
   pi.on("before_provider_request", (event) => {
-    const payload = (event as { payload?: Record<string, unknown> }).payload;
-    if (payload && typeof payload === "object") {
-      for (const field of UNSUPPORTED_FIELDS) {
-        if (field in payload) delete payload[field];
-      }
-    }
+    const payload = (event as { payload?: unknown }).payload;
     logLine("REQUEST payload", safeStringify(payload));
   });
 
