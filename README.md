@@ -26,10 +26,17 @@ quality with a pure diffusion model), the data/eval setup, and the iteration pro
   under GPT-5.5's 272K input-pricing cliff) and `settings.default.json`
   otherwise (compacts at ~80% of 1M context). Both files share the same
   retry budget, tuned to match `pi-extensions/*/retry-fetch.ts`.
-- `pi-extensions/` — local pi providers for Azure (`azure-anthropic`, `azure-openai`)
-  plus a `mithril` extension that injects the spot-preemption nudge into pi
-  sessions (Claude Code gets it via the PreToolUse hook in `ops/`).
-  Installed into the image at build time.
+- `pi-extensions/` — local pi extensions installed into the image at build time:
+  - `azure-anthropic`, `azure-openai` — Azure provider URL/header setup,
+    plus a shared fetch retry wrapper (`_shared/retry-fetch.ts`) and an
+    `openai-responses` error-message shim that triggers pi's built-in retry.
+  - `mithril` — pi-side spot-preemption nudge (Claude Code gets it via the
+    PreToolUse hook in `ops/`).
+  - `checkpoint` — periodic (~30 min, `CHECKPOINT_INTERVAL_MS` to override)
+    nudge to refresh `/workspace/STATUS.md` and commit, with an embedded
+    GPU/disk snapshot.
+  - `resources` — registers a `resources` tool the agent can call on demand
+    for an `nvidia-smi` + `df -h /workspace` snapshot.
 - `plan/PLAN.md` — the task description handed to the agent. Required for
   `make seed`. `plan/` is gitignored, so a clean clone won't have it — create
   one before seeding. `plan/PLAN-D3PM.md` and `plan/NOTES.md` are auxiliary

@@ -98,6 +98,8 @@ COPY --chown=${USER_UID}:${USER_GID} pi-extensions /tmp/pi-extensions
 RUN pi install /tmp/pi-extensions/azure-anthropic \
  && pi install /tmp/pi-extensions/azure-openai \
  && pi install /tmp/pi-extensions/mithril \
+ && pi install /tmp/pi-extensions/checkpoint \
+ && pi install /tmp/pi-extensions/resources \
  && pi install npm:pi-web-access
 
 # Mithril spot-interruption handling: entrypoint wrapper, signal-file
