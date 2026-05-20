@@ -88,9 +88,16 @@ ENV PATH="$PATH:/workspace/tools/fast_align/build"
 # rest of the working tree.
 RUN mkdir src doc d ckpt log
 COPY --chown=${USER_UID}:${USER_GID} models.json /home/${USERNAME}/.pi/agent/models.json
+# Pi compaction/retry profiles. entrypoint.sh installs the right one at
+# container start based on PI_MODEL; the default seeds the image so
+# claude/non-pi runs still get a valid settings.json.
+COPY --chown=${USER_UID}:${USER_GID} pi-settings /etc/pi-settings
+RUN install -m 0644 /etc/pi-settings/settings.default.json \
+                    /home/${USERNAME}/.pi/agent/settings.json
 COPY --chown=${USER_UID}:${USER_GID} pi-extensions /tmp/pi-extensions
 RUN pi install /tmp/pi-extensions/azure-anthropic \
  && pi install /tmp/pi-extensions/azure-openai \
+ && pi install /tmp/pi-extensions/mithril \
  && pi install npm:pi-web-access
 
 # Mithril spot-interruption handling: entrypoint wrapper, signal-file

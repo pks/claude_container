@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { installAzureRetryFetch } from "../_shared/retry-fetch.js";
 
 function upgradeCacheTtlInPlace(value: unknown): void {
   if (Array.isArray(value)) {
@@ -35,4 +36,6 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_provider_request", (event) => {
     upgradeCacheTtlInPlace(event.payload);
   });
+
+  installAzureRetryFetch(base);
 }

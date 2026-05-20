@@ -21,8 +21,15 @@ quality with a pure diffusion model), the data/eval setup, and the iteration pro
   hook that nudges the agent to checkpoint when preemption is signaled), and
   `claude-settings.json` registering the hook.
 - `models.json` — pi-coding-agent model registry, copied to `~/.pi/agent/models.json`.
-- `pi-extensions/` — local pi providers for Azure (`azure-anthropic`, `azure-openai`),
-  installed into the image at build time.
+- `pi-settings/` — pi-coding-agent settings profiles (retry + compaction).
+  `entrypoint.sh` picks `settings.gpt.json` when `PI_MODEL=gpt-*` (compacts
+  under GPT-5.5's 272K input-pricing cliff) and `settings.default.json`
+  otherwise (compacts at ~80% of 1M context). Both files share the same
+  retry budget, tuned to match `pi-extensions/*/retry-fetch.ts`.
+- `pi-extensions/` — local pi providers for Azure (`azure-anthropic`, `azure-openai`)
+  plus a `mithril` extension that injects the spot-preemption nudge into pi
+  sessions (Claude Code gets it via the PreToolUse hook in `ops/`).
+  Installed into the image at build time.
 - `plan/PLAN.md` — the task description handed to the agent. Required for
   `make seed`. `plan/` is gitignored, so a clean clone won't have it — create
   one before seeding. `plan/PLAN-D3PM.md` and `plan/NOTES.md` are auxiliary

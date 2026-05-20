@@ -124,10 +124,13 @@ case "$PROFILE" in
       exit 1
     elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
       ENVS+=(-e ANTHROPIC_API_KEY)
-      ARGS=("${PI_RESUME[@]}" --provider anthropic --model "${PI_MODEL:-claude-opus-4-7}" --thinking xhigh "$EFFECTIVE_PROMPT")
+      PI_MODEL="${PI_MODEL:-claude-opus-4-7}"
+      ENVS+=(-e "PI_MODEL=$PI_MODEL")
+      ARGS=("${PI_RESUME[@]}" --provider anthropic --model "$PI_MODEL" --thinking xhigh "$EFFECTIVE_PROMPT")
     elif [ -n "${OPENAI_API_KEY:-}" ]; then
       ENVS+=(-e OPENAI_API_KEY)
       PI_MODEL="${PI_MODEL:-gpt-5.5}"
+      ENVS+=(-e "PI_MODEL=$PI_MODEL")
       # DeepSeek-V4 on Azure (OpenAI-compatible) only accepts reasoning_effort
       # "high" or "max"; pi's "xhigh" alias would be rejected. Other Azure
       # OpenAI deployments keep xhigh for parity with prior behavior.
