@@ -153,7 +153,7 @@ case "$PROFILE" in
     ENTRYPOINT=/home/ubuntu/.npm-global/bin/pi
     : "${GEMINI_API_KEY:?GEMINI_API_KEY must be set for pi-gemini}"
     ENVS+=(-e GEMINI_API_KEY)
-    PI_MODEL="${PI_MODEL:-gemini-3.5-flash}"
+    PI_MODEL="${PI_MODEL:-gemini-3.1-pro-preview}"
     ENVS+=(-e "PI_MODEL=$PI_MODEL")
     ARGS=("${PI_RESUME[@]}" --provider gemini --model "$PI_MODEL" --thinking high "$EFFECTIVE_PROMPT")
     ;;
