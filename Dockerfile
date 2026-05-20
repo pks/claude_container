@@ -97,6 +97,7 @@ RUN install -m 0644 /etc/pi-settings/settings.default.json \
 COPY --chown=${USER_UID}:${USER_GID} pi-extensions /tmp/pi-extensions
 RUN pi install /tmp/pi-extensions/azure-anthropic \
  && pi install /tmp/pi-extensions/azure-openai \
+ && pi install /tmp/pi-extensions/gemini \
  && pi install /tmp/pi-extensions/mithril \
  && pi install /tmp/pi-extensions/checkpoint \
  && pi install /tmp/pi-extensions/resources \
