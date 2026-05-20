@@ -21,9 +21,9 @@
       ]
     },
     "gemini": {
-      "api": "openai-completions",
+      "api": "google-generative-ai",
       "apiKey": "GEMINI_API_KEY",
-      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
       "models": [
         {
           "id": "gemini-3.1-pro-preview",
