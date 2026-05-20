@@ -77,9 +77,9 @@ fi
 # shared across profiles; only the fresh prompt varies (pi-or runs full
 # caveman rather than caveman lite).
 case "$PROFILE" in
-  claude)                   SESSION_DIR=.claude/projects ;;
-  pi-ollama|pi-azure|pi-or) SESSION_DIR=.pi/agent/sessions ;;
-  *)                        SESSION_DIR= ;;
+  claude)                                       SESSION_DIR=.claude/projects ;;
+  pi-ollama|pi-azure|pi-or|pi-gemini)           SESSION_DIR=.pi/agent/sessions ;;
+  *)                                            SESSION_DIR= ;;
 esac
 case "$PROFILE" in
   pi-or) FRESH_PROMPT='/skill:caveman\ncarry out doc/PLAN.md' ;;
@@ -149,12 +149,20 @@ case "$PROFILE" in
     : "${OPENROUTER_API_KEY:?OPENROUTER_API_KEY must be set for pi-or}"
     ARGS=("${PI_RESUME[@]}" --provider openrouter --api-key "$OPENROUTER_API_KEY" --model moonshotai/kimi-k2.6 --thinking high "$EFFECTIVE_PROMPT")
     ;;
+  pi-gemini)
+    ENTRYPOINT=/home/ubuntu/.npm-global/bin/pi
+    : "${GEMINI_API_KEY:?GEMINI_API_KEY must be set for pi-gemini}"
+    ENVS+=(-e GEMINI_API_KEY)
+    PI_MODEL="${PI_MODEL:-models/gemini-3.5-flash}"
+    ENVS+=(-e "PI_MODEL=$PI_MODEL")
+    ARGS=("${PI_RESUME[@]}" --provider gemini --model "$PI_MODEL" --thinking high "$EFFECTIVE_PROMPT")
+    ;;
   bash)
     ENTRYPOINT=bash
     ARGS=()
     ;;
   *)
-    echo "usage: $0 {claude|pi-ollama|pi-azure|pi-or|bash} [gpu-id|all]" >&2
+    echo "usage: $0 {claude|pi-ollama|pi-azure|pi-gemini|pi-or|bash} [gpu-id|all]" >&2
     exit 1
     ;;
 esac
