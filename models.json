@@ -26,7 +26,7 @@
       "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
       "models": [
         {
-          "id": "models/gemini-3.5-flash",
+          "id": "gemini-3.5-flash",
           "name": "Gemini 3.5 Flash",
           "reasoning": true,
           "thinkingLevelMap": {
@@ -41,7 +41,7 @@
           "maxTokens": 65536
         },
         {
-          "id": "models/gemini-3-pro",
+          "id": "gemini-3-pro",
           "name": "Gemini 3 Pro",
           "reasoning": true,
           "thinkingLevelMap": {
