@@ -45,6 +45,27 @@
             "cacheRead": 0.20,
             "cacheWrite": 4.50
           }
+        },
+        {
+          "id": "gemini-3.5-flash",
+          "name": "Gemini 3.5 Flash",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": "minimal",
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "high"
+          },
+          "input": ["text", "image"],
+          "contextWindow": 1000000,
+          "maxTokens": 65536,
+          "cost": {
+            "input": 1.50,
+            "output": 9.00,
+            "cacheRead": 0.15,
+            "cacheWrite": 1.00
+          }
         }
       ]
     },

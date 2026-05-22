@@ -167,11 +167,17 @@ Already integrated (✓) or pending (○):
 
 - ✓ GPT-5.5 / Codex (via `pi-azure`, `PI_MODEL=gpt-5.5`)
 - ✓ DeepSeek V4 (via `pi-azure`, `PI_MODEL=DeepSeek-V4-Pro`)
+- ✓ Gemini 3.1 Pro Preview (via `pi-gemini`)
 - ○ Gemini 3.5 — https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-3-5/#gemini-3-5-flash
+- ○ Qwen 3.7 — https://qwen.ai/blog?id=qwen3.7
 - ○ Kimi K2.6 (currently wired through `pi-or`)
 - ○ GLM 5.1
 - ○ granite4.1 — https://ollama.com/library/granite4.1
 - ○ Mistral Medium 3.5 / vibe remote agents — https://mistral.ai/news/vibe-remote-agents-mistral-medium-3-5
+
+### Reading / listening
+
+- https://share.transistor.fm/s/451da102
 
 ## Source
 
