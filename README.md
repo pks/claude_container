@@ -47,12 +47,27 @@ quality with a pure diffusion model), the data/eval setup, and the iteration pro
 ```sh
 make image                  # build the image (auto-detects GPU arch)
 # ...create plan/PLAN.md describing the task for the agent...
+# ...optional: drop plan/HOST.md with per-machine notes (power caps, quirks)...
 make seed                   # populate ./state/{workspace,home} from the image
 ```
 
-`make seed` is one-time. After image rebuilds that touch `/home/ubuntu`
+`make seed` is one-time. After image rebuilds that touch the user home dir
 (installed tools, agent configs, etc.), `make reseed` wipes `$STATE_DIR`
 and re-runs the seed.
+
+`plan/HOST.md` (optional) is copied to `workspace/doc/HOST.md` if present. The
+PLAN tells the agent to read it for per-machine specifics. Templates available
+in the meta repo:
+
+- `plan/HOST-titan.md` — cron-managed power cap schedule for titan / titan2
+- `plan/HOST-mithril.md` — Mithril spot-preemption behavior and state-survival contract
+
+Symlink or copy the right one into `plan/HOST.md` before `make seed`:
+
+```sh
+ln -sf HOST-mithril.md plan/HOST.md   # on a Mithril spot instance
+ln -sf HOST-titan.md   plan/HOST.md   # on titan / titan2
+```
 
 ## Run
 
@@ -67,7 +82,7 @@ Profiles:
 | `claude`    | Claude Code, `claude-opus-4-6`, `--effort max`                   |
 | `pi-ollama` | pi against a local Ollama (`qwen3.6:35b`)                        |
 | `pi-azure`  | pi against Azure; set `AZURE_BASE_URL` and one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`. Override the model with `PI_MODEL=...` (e.g. `PI_MODEL=DeepSeek-V4-Pro` for DeepSeek on Azure AI Foundry) |
-| `pi-gemini` | pi against Google's OpenAI-compatible Gemini endpoint (`models/gemini-3.5-flash` by default; `PI_MODEL=models/gemini-3-pro` for Pro). Needs `GEMINI_API_KEY`. Implicit prompt caching only — no `cache_control` markers via the compat layer. |
+| `pi-gemini` | pi against Google's OpenAI-compatible Gemini endpoint (`gemini-3.1-pro-preview` by default; override with `PI_MODEL=...`). Needs `GEMINI_API_KEY`. Implicit prompt caching only — no `cache_control` markers via the compat layer. Set `PI_GEMINI_DEBUG=1` for request/response logging to `/workspace/log/gemini-debug.log`. |
 | `pi-or`     | pi against OpenRouter (`moonshotai/kimi-k2.6`); needs `OPENROUTER_API_KEY` |
 | `bash`      | Drop into a shell in the container                               |
 
@@ -125,9 +140,38 @@ short-circuits — everything else works the same.
 
 ### Username
 
-The image is built with `USERNAME=ubuntu` and the host UID/GID (see `Makefile`),
-and `run.sh` hardcodes `/home/ubuntu/...` paths for the pi entrypoint. If you
-rebuild with a different `USERNAME`, update those paths in `run.sh` to match.
+The image is built with `USERNAME=ubuntu` and the host UID/GID by default (see
+`Makefile`). To override, set `USERNAME` on both the image build and the run:
+
+```sh
+make USERNAME=alice image seed
+USERNAME=alice make run
+# or: USERNAME=alice ./run.sh <profile>
+```
+
+`run.sh` and the Makefile derive all `/home/$USERNAME/...` paths from the var,
+so no in-script edits are needed.
+
+## Future work
+
+### Alternative harnesses to evaluate
+
+- https://github.com/Endi1/fabrica
+- https://github.com/aattaran/deepclaude
+- https://github.com/dirac-run/dirac
+- https://github.com/antoinezambelli/forge
+
+### Models to wire up
+
+Already integrated (✓) or pending (○):
+
+- ✓ GPT-5.5 / Codex (via `pi-azure`, `PI_MODEL=gpt-5.5`)
+- ✓ DeepSeek V4 (via `pi-azure`, `PI_MODEL=DeepSeek-V4-Pro`)
+- ○ Gemini 3.5 — https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-3-5/#gemini-3-5-flash
+- ○ Kimi K2.6 (currently wired through `pi-or`)
+- ○ GLM 5.1
+- ○ granite4.1 — https://ollama.com/library/granite4.1
+- ○ Mistral Medium 3.5 / vibe remote agents — https://mistral.ai/news/vibe-remote-agents-mistral-medium-3-5
 
 ## Source
 

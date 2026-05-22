@@ -11,10 +11,22 @@ ACK="${SHUTDOWN_ACK_FILE:-/workspace/.shutdown-acked}"
 grep -qE 'STATUS_(PREEMPTING|RELOCATING)' "$SIG" || exit 0
 [ -f "$ACK" ] && exit 0
 
-end_time=$(awk -F': ' '/^end_time:/ {sub(/^[[:space:]]+/,"",$2); print $2; exit}' "$SIG")
-status=$(awk -F': ' '/^instance_status:/ {sub(/^[[:space:]]+/,"",$2); print $2; exit}' "$SIG")
+END_TIME=$(awk -F': ' '/^end_time:/ {sub(/^[[:space:]]+/,"",$2); print $2; exit}' "$SIG")
+STATUS=$(awk -F': ' '/^instance_status:/ {sub(/^[[:space:]]+/,"",$2); print $2; exit}' "$SIG")
+HOME_PATH="${HOME:-/home/ubuntu}"
 
-msg="MITHRIL SPOT INTERRUPTION SIGNALED ($status). Node terminates at $end_time. Stop launching new long-running jobs. Commit pending changes to git. Write /workspace/STATUS.md summarizing in-flight work and what to resume next. touch /workspace/.shutdown-acked and exit. /workspace and /home/ubuntu are bind-mounted from host-persistent storage so they survive; only in-flight processes will be killed. The next run picks up via --continue with a resume prompt."
+# Shared with pi-extensions/mithril/index.ts via {{STATUS}} / {{END_TIME}} /
+# {{HOME_PATH}} placeholders. Mustache-style avoids shell evaluation entirely.
+TEMPLATE="${MITHRIL_NUDGE_TEMPLATE:-/usr/local/share/mithril-nudge.txt}"
+if [ -f "$TEMPLATE" ]; then
+  msg=$(sed \
+    -e "s|{{STATUS}}|$STATUS|g" \
+    -e "s|{{END_TIME}}|$END_TIME|g" \
+    -e "s|{{HOME_PATH}}|$HOME_PATH|g" \
+    "$TEMPLATE")
+else
+  msg="MITHRIL SPOT INTERRUPTION SIGNALED ($STATUS). Node terminates at $END_TIME. Commit + STATUS.md + ack + exit."
+fi
 
 jq -nRc --arg msg "$msg" \
   '{hookSpecificOutput: {hookEventName: "PreToolUse", additionalContext: $msg}}'

@@ -52,13 +52,21 @@ RUN git config --global user.email "${USERNAME}@localhost" \
 RUN curl -fsSL https://claude.ai/install.sh | bash \
  && curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Python environment
+# Python environment — split into three RUN layers so the slow flash-attn
+# install (especially the ampere source build) is cached independently of
+# the cheaper torch/datasets layer above it. Tweaking dataset deps no longer
+# invalidates flash-attn.
 RUN uv init --python 3.12 \
  && sed -i 's/requires-python.*/requires-python = "==3.12.*"/' pyproject.toml \
- && printf '\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n\n[tool.uv.exclude-newer-package]\ndatasets = "1 day"\nsacrebleu = "1 day"\nsentencepiece = "1 day"\ntensorboard = "1 day"\ntbparse = "1 day"\n' "${CUDA_VERSION}" >> pyproject.toml \
- && uv add torch datasets sacrebleu sentencepiece tensorboard tbparse \
- && case "${GPU_ARCH}" in \
-      ampere)    uv pip install packaging wheel psutil && uv pip install flash-attn --no-build-isolation;; \
+ && printf '\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n\n[tool.uv.exclude-newer-package]\ndatasets = "1 day"\nsacrebleu = "1 day"\nsentencepiece = "1 day"\ntensorboard = "1 day"\ntbparse = "1 day"\n' "${CUDA_VERSION}" >> pyproject.toml
+
+RUN uv add torch datasets sacrebleu sentencepiece tensorboard tbparse
+
+# flash-attn: separate layer. Ampere builds from source (~minutes); pinning
+# this as its own step means it's only re-run when GPU_ARCH or torch changes.
+RUN case "${GPU_ARCH}" in \
+      ampere)    uv pip install packaging wheel psutil \
+                 && uv pip install flash-attn --no-build-isolation;; \
       blackwell) uv pip install 'flash-attn-4[cu13]' --prerelease=allow;; \
     esac
 
@@ -110,8 +118,10 @@ USER root
 COPY ops/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY ops/mithril-watch.sh /usr/local/bin/mithril-watch.sh
 COPY ops/mithril-hook.sh /usr/local/bin/mithril-hook.sh
+COPY ops/mithril-nudge.txt /usr/local/share/mithril-nudge.txt
 RUN chmod 0755 /usr/local/bin/entrypoint.sh \
                /usr/local/bin/mithril-watch.sh \
-               /usr/local/bin/mithril-hook.sh
+               /usr/local/bin/mithril-hook.sh \
+ && chmod 0644 /usr/local/share/mithril-nudge.txt
 USER ${USER_UID}:${USER_GID}
 COPY --chown=${USER_UID}:${USER_GID} ops/claude-settings.json /home/${USERNAME}/.claude/settings.json

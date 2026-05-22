@@ -1,8 +1,10 @@
 #!/bin/bash
-set -eu
+set -euo pipefail
 
-PROFILE="${1:-claude}"
-GPU="${2:-all}"
+PROFILE="${1:-${PROFILE:-claude}}"
+GPU="${2:-${GPU:-all}}"
+USERNAME="${USERNAME:-ubuntu}"
+CONTAINER_HOME="/home/$USERNAME"
 
 # Parse .env into the host shell (for script-side dispatch like pi-azure
 # key selection) and collect the names so we can forward them to the
@@ -31,7 +33,7 @@ case "$GPU" in
   *)   GPU_FLAG=(--gpus "device=$GPU") ;;
 esac
 
-# /workspace and /home/ubuntu bind-mount from $STATE_DIR so code, ckpts,
+# /workspace and $CONTAINER_HOME bind-mount from $STATE_DIR so code, ckpts,
 # sessions, plugins, npm-global, etc. survive container exits and same-
 # node-type Mithril spot relocations (which preserve the root disk).
 # `make seed` populates $STATE_DIR from the image.
@@ -44,14 +46,14 @@ fi
 
 MOUNTS=(
   -v "$STATE_DIR/workspace:/workspace"
-  -v "$STATE_DIR/home:/home/ubuntu"
+  -v "$STATE_DIR/home:$CONTAINER_HOME"
 )
 
 # Host Claude Code auth, layered over the home bind mount above.
 [ -f ~/.claude/.credentials.json ] \
-  && MOUNTS+=(-v ~/.claude/.credentials.json:/home/ubuntu/.claude/.credentials.json)
+  && MOUNTS+=(-v ~/.claude/.credentials.json:"$CONTAINER_HOME/.claude/.credentials.json")
 [ -f ~/.claude.json ] \
-  && MOUNTS+=(-v ~/.claude.json:/home/ubuntu/.claude.json)
+  && MOUNTS+=(-v ~/.claude.json:"$CONTAINER_HOME/.claude.json")
 
 # Mithril spot signal — the in-container watcher polls it and SIGINTs the
 # agent on preemption.
@@ -110,11 +112,11 @@ case "$PROFILE" in
     ARGS=("${CLAUDE_RESUME[@]}" --dangerously-skip-permissions --model claude-opus-4-6 --effort max "$EFFECTIVE_PROMPT")
     ;;
   pi-ollama)
-    ENTRYPOINT=/home/ubuntu/.npm-global/bin/pi
+    ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
     ARGS=("${PI_RESUME[@]}" --provider ollama --model qwen3.6:35b --thinking max "$EFFECTIVE_PROMPT")
     ;;
   pi-azure)
-    ENTRYPOINT=/home/ubuntu/.npm-global/bin/pi
+    ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
     : "${AZURE_BASE_URL:?AZURE_BASE_URL must be set for pi-azure}"
     # Forward explicitly: the .env passthrough above only catches vars
     # listed in .env, but users may export these in their shell instead.
@@ -145,12 +147,12 @@ case "$PROFILE" in
     fi
     ;;
   pi-or)
-    ENTRYPOINT=/home/ubuntu/.npm-global/bin/pi
+    ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
     : "${OPENROUTER_API_KEY:?OPENROUTER_API_KEY must be set for pi-or}"
     ARGS=("${PI_RESUME[@]}" --provider openrouter --api-key "$OPENROUTER_API_KEY" --model moonshotai/kimi-k2.6 --thinking high "$EFFECTIVE_PROMPT")
     ;;
   pi-gemini)
-    ENTRYPOINT=/home/ubuntu/.npm-global/bin/pi
+    ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
     : "${GEMINI_API_KEY:?GEMINI_API_KEY must be set for pi-gemini}"
     ENVS+=(-e GEMINI_API_KEY)
     PI_MODEL="${PI_MODEL:-gemini-3.1-pro-preview}"

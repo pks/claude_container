@@ -47,16 +47,27 @@ function readSignal(): SignalState | undefined {
   return { status, endTime };
 }
 
+// Shared with ops/mithril-hook.sh via mustache-style {{NAME}} placeholders.
+const TEMPLATE_PATH = process.env.MITHRIL_NUDGE_TEMPLATE ?? "/usr/local/share/mithril-nudge.txt";
+const FALLBACK_TEMPLATE =
+  "MITHRIL SPOT INTERRUPTION SIGNALED ({{STATUS}}). Node terminates at {{END_TIME}}. " +
+  "Commit + STATUS.md + ack + exit.";
+
+function loadTemplate(): string {
+  try {
+    return readFileSync(TEMPLATE_PATH, "utf8");
+  } catch {
+    return FALLBACK_TEMPLATE;
+  }
+}
+
 function buildNudge(s: SignalState): string {
-  return (
-    `MITHRIL SPOT INTERRUPTION SIGNALED (${s.status}). Node terminates at ${s.endTime}. ` +
-    `Stop launching new long-running jobs. Commit pending changes to git. ` +
-    `Write /workspace/STATUS.md summarizing in-flight work and what to resume next. ` +
-    `touch /workspace/.shutdown-acked and exit. ` +
-    `/workspace and /home/ubuntu are bind-mounted from host-persistent storage so they ` +
-    `survive; only in-flight processes will be killed. ` +
-    `The next run picks up via --continue with a resume prompt.`
-  );
+  const homePath = process.env.HOME ?? "/home/ubuntu";
+  return loadTemplate()
+    .replaceAll("{{STATUS}}", s.status)
+    .replaceAll("{{END_TIME}}", s.endTime)
+    .replaceAll("{{HOME_PATH}}", homePath)
+    .trim();
 }
 
 export default function (pi: ExtensionAPI) {

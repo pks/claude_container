@@ -5,13 +5,14 @@ IMAGE     ?= claude-container
 STATE_DIR ?= $(CURDIR)/state
 PROFILE   ?= claude
 GPU       ?= all
+USERNAME  ?= ubuntu
 
-.PHONY: image seed reseed run
+.PHONY: image seed reseed run smoke
 
 image:
 	@echo "Detected GPU_ARCH=$(GPU_ARCH) CUDA_VERSION=$(CUDA_VERSION)"
 	docker build \
-		--build-arg USERNAME=ubuntu \
+		--build-arg USERNAME=$(USERNAME) \
 		--build-arg USER_UID=$$(id -u) \
 		--build-arg USER_GID=$$(id -g) \
 		--build-arg GPU_ARCH=$(GPU_ARCH) \
@@ -42,9 +43,13 @@ seed: image
 	  echo "seeding $(STATE_DIR) from $(IMAGE)"; \
 	  cid=$$(docker create $(IMAGE)) \
 	    && docker cp $$cid:/workspace/. $(STATE_DIR)/workspace/ \
-	    && docker cp $$cid:/home/ubuntu/. $(STATE_DIR)/home/ \
+	    && docker cp $$cid:/home/$(USERNAME)/. $(STATE_DIR)/home/ \
 	    && docker rm $$cid >/dev/null \
 	    && cp plan/PLAN.md $(STATE_DIR)/workspace/doc/PLAN.md; \
+	  if [ -f plan/HOST.md ]; then \
+	    cp plan/HOST.md $(STATE_DIR)/workspace/doc/HOST.md; \
+	    echo "seeding: shipped plan/HOST.md -> doc/HOST.md"; \
+	  fi; \
 	fi
 
 reseed:
@@ -52,4 +57,19 @@ reseed:
 	$(MAKE) seed
 
 run:
-	./run.sh $(PROFILE) $(GPU)
+	USERNAME=$(USERNAME) ./run.sh $(PROFILE) $(GPU)
+
+# Smoke: build image (no-op if cached), seed if needed, run the `bash` profile
+# non-interactively to verify entrypoint + mounts + uv env are all wired up.
+# Exits 0 on success; non-zero on any breakage in the chain.
+smoke: image
+	@if [ ! -d "$(STATE_DIR)/workspace" ] || [ ! -d "$(STATE_DIR)/home" ]; then \
+	  $(MAKE) seed; \
+	fi
+	@echo "==> smoke: bash profile, image=$(IMAGE)"
+	@docker run --rm \
+		-v "$(STATE_DIR)/workspace:/workspace" \
+		-v "$(STATE_DIR)/home:/home/$(USERNAME)" \
+		--entrypoint /usr/local/bin/entrypoint.sh \
+		$(IMAGE) \
+		bash -c 'set -e; echo "[smoke] pwd=$$(pwd)"; uv --version; node --version; pi --version >/dev/null && echo "[smoke] pi OK"; claude --version >/dev/null && echo "[smoke] claude OK"; echo "[smoke] all OK"'
