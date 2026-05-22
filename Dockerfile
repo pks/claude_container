@@ -70,8 +70,12 @@ RUN case "${GPU_ARCH}" in \
       blackwell) uv pip install 'flash-attn-4[cu13]' --prerelease=allow;; \
     esac
 
-# Initialize workspace repo
+# Initialize workspace repo. Append project-specific ignores (checkpoints,
+# logs, tensorboard event files) to the .gitignore that uv init created,
+# so the agent's per-version commits don't store large binary artifacts.
+# Without this, .git/ mirrors every saved ckpt and bloats the workspace.
 RUN rm -f README.md main.py \
+ && printf '\n# Training artifacts — do not commit\nckpt/\nlog/\ntb/\nruns/\n*.pt\n*.safetensors\n' >> .gitignore \
  && git branch -M main \
  && git add * .python-version .gitignore \
  && git commit -m init
