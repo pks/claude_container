@@ -1,4 +1,5 @@
 {
+  "theme": "dark",
   "retry": {
     "enabled": true,
     "maxRetries": 11,
