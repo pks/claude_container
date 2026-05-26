@@ -58,7 +58,7 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
 # invalidates flash-attn.
 RUN uv init --python 3.12 \
  && sed -i 's/requires-python.*/requires-python = "==3.12.*"/' pyproject.toml \
- && printf '\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n' "${CUDA_VERSION}" >> pyproject.toml
+ && printf '\n[tool.uv]\nindex-strategy = "unsafe-best-match"\n\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n' "${CUDA_VERSION}" >> pyproject.toml
 
 # Pin every direct dep to a known-good version. Bump explicitly when needed
 # (see versions on pypi.org/pypi/<name>/json — `info.version` is latest).
