@@ -133,9 +133,11 @@ case "$PROFILE" in
       ENVS+=(-e OPENAI_API_KEY)
       PI_MODEL="${PI_MODEL:-gpt-5.5}"
       ENVS+=(-e "PI_MODEL=$PI_MODEL")
-      # DeepSeek-V4 on Azure (OpenAI-compatible) only accepts reasoning_effort
-      # "high" or "max"; pi's "xhigh" alias would be rejected. Other Azure
-      # OpenAI deployments keep xhigh for parity with prior behavior.
+      # DeepSeek-V4-Pro on Azure caps reasoning_effort at "high" — to get
+      # "max" effort you select a different model variant (PI_MODEL=
+      # DeepSeek-V4-Pro-Max), not a higher reasoning_effort value.
+      # Other Azure OpenAI deployments (gpt-5.x) accept xhigh in practice
+      # despite Azure docs listing xhigh only for gpt-5.1-codex-max.
       case "$PI_MODEL" in
         DeepSeek-*|deepseek-*) THINKING=high ;;
         *)                     THINKING=xhigh ;;

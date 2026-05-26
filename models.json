@@ -12,7 +12,25 @@
             "low": null,
             "medium": null,
             "high": "high",
-            "xhigh": "max"
+            "xhigh": "high",
+            "max": "high"
+          },
+          "input": ["text"],
+          "contextWindow": 1000000,
+          "maxTokens": 384000
+        },
+        {
+          "id": "DeepSeek-V4-Pro-Max",
+          "name": "DeepSeek V4 Pro (Max)",
+          "api": "openai-completions",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": null,
+            "medium": null,
+            "high": "high",
+            "xhigh": "high",
+            "max": "high"
           },
           "input": ["text"],
           "contextWindow": 1000000,
@@ -34,7 +52,8 @@
             "low": "low",
             "medium": "medium",
             "high": "high",
-            "xhigh": "high"
+            "xhigh": "high",
+            "max": "high"
           },
           "input": ["text", "image"],
           "contextWindow": 1000000,
@@ -55,7 +74,8 @@
             "low": "low",
             "medium": "medium",
             "high": "high",
-            "xhigh": "high"
+            "xhigh": "high",
+            "max": "high"
           },
           "input": ["text", "image"],
           "contextWindow": 1000000,
