@@ -70,13 +70,12 @@ RUN uv add \
       'tensorboard==2.20.0' \
       'tbparse==0.0.9'
 
-# flash-attn: separate layer. Ampere builds from source (~minutes); pinning
-# this as its own step means it's only re-run when GPU_ARCH or torch changes.
-RUN case "${GPU_ARCH}" in \
-      ampere)    uv pip install 'packaging==26.2' 'wheel==0.47.0' 'psutil==7.2.2' \
-                 && uv pip install 'flash-attn==2.8.3' --no-build-isolation;; \
-      blackwell) uv pip install 'flash-attn-4[cu13]==4.0.0b14' --prerelease=allow;; \
-    esac
+# No explicit flash-attn install. Torch 2.12's torch.nn.functional.
+# scaled_dot_product_attention dispatches to FlashAttention internally on
+# supported hardware (Ampere via flash-attn-2 kernels; Blackwell via cuDNN's
+# flash kernel). The explicit `flash_attn_interface` API was only used by one
+# now-archived run (ds-1) — every other agent uses SDPA, which has matched
+# explicit flash-attn for the workload here. Saves ~minutes per image build.
 
 # Initialize workspace repo. Append project-specific ignores (checkpoints,
 # logs, tensorboard event files) to the .gitignore that uv init created,
