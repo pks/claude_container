@@ -56,17 +56,18 @@ make seed                   # populate ./state/{workspace,home} from the image
 and re-runs the seed.
 
 `plan/HOST.md` (optional) is copied to `workspace/doc/HOST.md` if present. The
-PLAN tells the agent to read it for per-machine specifics. Templates available
-in the meta repo:
+PLAN tells the agent to read it for per-machine specifics. Templates in the meta
+repo:
 
 - `plan/HOST-titan.md` — cron-managed power cap schedule for titan / titan2
 - `plan/HOST-mithril.md` — Mithril spot-preemption behavior and state-survival contract
 
-Symlink or copy the right one into `plan/HOST.md` before `make seed`:
+Copy or symlink the right one into `plan/HOST.md` before `make seed`
+(`plan/HOST.md` is gitignored so per-host choices don't leak into the plan repo):
 
 ```sh
-ln -sf HOST-mithril.md plan/HOST.md   # on a Mithril spot instance
-ln -sf HOST-titan.md   plan/HOST.md   # on titan / titan2
+cp HOST-mithril.md plan/HOST.md   # on a Mithril spot instance
+cp HOST-titan.md   plan/HOST.md   # on titan / titan2
 ```
 
 ## Run
