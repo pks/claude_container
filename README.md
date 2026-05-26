@@ -1,6 +1,6 @@
 # Claude Container
 
-Containerized harness for autonomously running a machine translation experiments under an LLM coding agent — Claude Code or [pi-coding-agent](https://github.com/mariozechner/pi-coding-agent).
+Containerized harness for autonomously running a machine translation experiments under an LLM coding agent — Claude Code or [pi-coding-agent](https://github.com/earendil-works/pi-mono).
 
 The agent is dropped into `/workspace` inside the container and told to carry out
 [`plan/PLAN.md`](plan/PLAN.md), which defines the research task (match Transformer-base

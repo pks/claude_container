@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { installAzureRetryFetch } from "../_shared/retry-fetch.js";
 
 // Azure's OpenAI Responses API occasionally streams a `response.failed` SSE

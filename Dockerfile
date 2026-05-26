@@ -85,8 +85,14 @@ RUN claude plugin marketplace add JuliusBrussee/caveman \
  && claude plugin install caveman@caveman \
  && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
  && npm config set prefix '~/.npm-global' \
- && npm install -g @mariozechner/pi-coding-agent@0.73.1 \
+ && npm install -g @earendil-works/pi-coding-agent@0.75.5 \
  && npx skills add JuliusBrussee/caveman --yes
+
+# Patch pi to accept --thinking max for Opus 4.7. See ops/pi-patch-max-effort.sh
+# for rationale (Opus 4.7 supports effort=max via Anthropic API; pi's built-in
+# definitions and validation list cap at xhigh — outdated).
+COPY ops/pi-patch-max-effort.sh /tmp/pi-patch-max-effort.sh
+RUN bash /tmp/pi-patch-max-effort.sh && rm /tmp/pi-patch-max-effort.sh
 
 # Tools
 RUN mkdir tools \

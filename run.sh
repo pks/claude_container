@@ -128,7 +128,7 @@ case "$PROFILE" in
       ENVS+=(-e ANTHROPIC_API_KEY)
       PI_MODEL="${PI_MODEL:-claude-opus-4-7}"
       ENVS+=(-e "PI_MODEL=$PI_MODEL")
-      ARGS=("${PI_RESUME[@]}" --provider anthropic --model "$PI_MODEL" --thinking xhigh "$EFFECTIVE_PROMPT")
+      ARGS=("${PI_RESUME[@]}" --provider anthropic --model "$PI_MODEL" --thinking max "$EFFECTIVE_PROMPT")
     elif [ -n "${OPENAI_API_KEY:-}" ]; then
       ENVS+=(-e OPENAI_API_KEY)
       PI_MODEL="${PI_MODEL:-gpt-5.5}"

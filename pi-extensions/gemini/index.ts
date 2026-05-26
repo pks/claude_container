@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // Opt-in diagnostic for pi-gemini. When PI_GEMINI_DEBUG is set to a truthy
 // value, dumps the outgoing payload (via before_provider_request) and the raw

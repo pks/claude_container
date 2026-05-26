@@ -17,7 +17,7 @@
 // preemption window — the watcher's recurring SIGINT handles "wake up
 // from the current tool call", this just provides the context.
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 

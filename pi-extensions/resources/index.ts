@@ -5,7 +5,7 @@
 // "is disk filling up?") without calling out to bash. Exposing this as a
 // named tool also surfaces the capability in the system prompt.
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { getResourceSnapshot } from "../_shared/resources.js";
 

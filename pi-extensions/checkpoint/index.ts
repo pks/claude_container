@@ -7,7 +7,7 @@
 // Single timer per session; cleared on session_shutdown. Skipped if
 // /workspace is not present (non-autonomous host).
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
 import { getResourceSnapshot } from "../_shared/resources.js";
 
