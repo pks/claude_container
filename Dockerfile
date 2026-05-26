@@ -60,13 +60,21 @@ RUN uv init --python 3.12 \
  && sed -i 's/requires-python.*/requires-python = "==3.12.*"/' pyproject.toml \
  && printf '\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n' "${CUDA_VERSION}" >> pyproject.toml
 
-RUN uv add torch datasets sacrebleu sentencepiece tensorboard tbparse
+# Pin every direct dep to a known-good version. Bump explicitly when needed
+# (see versions on pypi.org/pypi/<name>/json — `info.version` is latest).
+RUN uv add \
+      'torch==2.12.0' \
+      'datasets==4.8.5' \
+      'sacrebleu==2.6.0' \
+      'sentencepiece==0.2.1' \
+      'tensorboard==2.20.0' \
+      'tbparse==0.0.9'
 
 # flash-attn: separate layer. Ampere builds from source (~minutes); pinning
 # this as its own step means it's only re-run when GPU_ARCH or torch changes.
 RUN case "${GPU_ARCH}" in \
-      ampere)    uv pip install packaging wheel psutil \
-                 && uv pip install flash-attn --no-build-isolation;; \
+      ampere)    uv pip install 'packaging==26.2' 'wheel==0.47.0' 'psutil==7.2.2' \
+                 && uv pip install 'flash-attn==2.8.3' --no-build-isolation;; \
       blackwell) uv pip install 'flash-attn-4[cu13]==4.0.0b14' --prerelease=allow;; \
     esac
 
