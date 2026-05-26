@@ -91,7 +91,7 @@ RUN claude plugin marketplace add JuliusBrussee/caveman \
 # Patch pi to accept --thinking max for Opus 4.7. See ops/pi-patch-max-effort.sh
 # for rationale (Opus 4.7 supports effort=max via Anthropic API; pi's built-in
 # definitions and validation list cap at xhigh — outdated).
-COPY ops/pi-patch-max-effort.sh /tmp/pi-patch-max-effort.sh
+COPY --chown=${USER_UID}:${USER_GID} ops/pi-patch-max-effort.sh /tmp/pi-patch-max-effort.sh
 RUN bash /tmp/pi-patch-max-effort.sh && rm /tmp/pi-patch-max-effort.sh
 
 # Tools
