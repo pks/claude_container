@@ -15,17 +15,6 @@ RUN apt update && apt upgrade -y && apt dist-upgrade -y \
  && apt install -y nodejs \
  && apt autoremove && apt clean
 
-# CUDA toolkit (needed to build flash-attn from source on Ampere)
-RUN if [ "${GPU_ARCH}" = "ampere" ]; then \
-      curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
-        -o /tmp/cuda-keyring.deb \
-      && dpkg -i /tmp/cuda-keyring.deb && rm /tmp/cuda-keyring.deb \
-      && apt update \
-      && apt install -y --no-install-recommends cuda-nvcc-12-6 cuda-cudart-dev-12-6 python3.12-dev \
-      && apt clean; \
-    fi
-ENV CUDA_HOME=/usr/local/cuda
-
 # Rename the built-in `ubuntu` user to ${USERNAME} and align UID/GID with host
 RUN if [ "${USERNAME}" != "ubuntu" ]; then \
       groupmod -n ${USERNAME} ubuntu \
@@ -52,10 +41,8 @@ RUN git config --global user.email "${USERNAME}@localhost" \
 RUN curl -fsSL https://claude.ai/install.sh | bash \
  && curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Python environment — split into three RUN layers so the slow flash-attn
-# install (especially the ampere source build) is cached independently of
-# the cheaper torch/datasets layer above it. Tweaking dataset deps no longer
-# invalidates flash-attn.
+# Python environment — uv init in one layer, deps in the next so changing a
+# dep version doesn't invalidate the project scaffold.
 RUN uv init --python 3.12 \
  && sed -i 's/requires-python.*/requires-python = "==3.12.*"/' pyproject.toml \
  && printf '\n[tool.uv]\nindex-strategy = "unsafe-best-match"\n\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n' "${CUDA_VERSION}" >> pyproject.toml
@@ -70,12 +57,6 @@ RUN uv add \
       'tensorboard==2.20.0' \
       'tbparse==0.0.9'
 
-# No explicit flash-attn install. Torch 2.12's torch.nn.functional.
-# scaled_dot_product_attention dispatches to FlashAttention internally on
-# supported hardware (Ampere via flash-attn-2 kernels; Blackwell via cuDNN's
-# flash kernel). The explicit `flash_attn_interface` API was only used by one
-# now-archived run (ds-1) — every other agent uses SDPA, which has matched
-# explicit flash-attn for the workload here. Saves ~minutes per image build.
 
 # Initialize workspace repo. Append project-specific ignores (checkpoints,
 # logs, tensorboard event files) to the .gitignore that uv init created,
