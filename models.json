@@ -12,8 +12,7 @@
             "low": null,
             "medium": null,
             "high": "high",
-            "xhigh": "high",
-            "max": "high"
+            "xhigh": "high"
           },
           "input": ["text"],
           "contextWindow": 1000000,
@@ -29,8 +28,7 @@
             "low": null,
             "medium": null,
             "high": "high",
-            "xhigh": "high",
-            "max": "high"
+            "xhigh": "high"
           },
           "input": ["text"],
           "contextWindow": 1000000,
@@ -52,8 +50,7 @@
             "low": "low",
             "medium": "medium",
             "high": "high",
-            "xhigh": "high",
-            "max": "high"
+            "xhigh": "high"
           },
           "input": ["text", "image"],
           "contextWindow": 1000000,
@@ -74,8 +71,7 @@
             "low": "low",
             "medium": "medium",
             "high": "high",
-            "xhigh": "high",
-            "max": "high"
+            "xhigh": "high"
           },
           "input": ["text", "image"],
           "contextWindow": 1000000,

@@ -113,7 +113,7 @@ case "$PROFILE" in
     ;;
   pi-ollama)
     ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
-    ARGS=("${PI_RESUME[@]}" --provider ollama --model qwen3.6:35b --thinking max "$EFFECTIVE_PROMPT")
+    ARGS=("${PI_RESUME[@]}" --provider ollama --model qwen3.6:35b --thinking xhigh "$EFFECTIVE_PROMPT")
     ;;
   pi-azure)
     ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
