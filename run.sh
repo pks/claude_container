@@ -5,6 +5,9 @@ PROFILE="${1:-${PROFILE:-claude}}"
 GPU="${2:-${GPU:-all}}"
 USERNAME="${USERNAME:-ubuntu}"
 CONTAINER_HOME="/home/$USERNAME"
+# Reasoning effort. Empty here triggers per-profile defaults below. Override
+# with e.g. THINKING=high make run PROFILE=pi-azure.
+THINKING="${THINKING:-}"
 
 # Parse .env into the host shell (for script-side dispatch like pi-azure
 # key selection) and collect the names so we can forward them to the
@@ -114,11 +117,11 @@ fi
 case "$PROFILE" in
   claude)
     ENTRYPOINT=claude
-    ARGS=("${CLAUDE_RESUME[@]}" --dangerously-skip-permissions --model claude-opus-4-6 --effort max "$EFFECTIVE_PROMPT")
+    ARGS=("${CLAUDE_RESUME[@]}" --dangerously-skip-permissions --model claude-opus-4-6 --effort "${THINKING:-max}" "$EFFECTIVE_PROMPT")
     ;;
   pi-ollama)
     ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
-    ARGS=("${PI_RESUME[@]}" --provider ollama --model qwen3.6:35b --thinking xhigh "$EFFECTIVE_PROMPT")
+    ARGS=("${PI_RESUME[@]}" --provider ollama --model qwen3.6:35b --thinking "${THINKING:-xhigh}" "$EFFECTIVE_PROMPT")
     ;;
   pi-azure)
     ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
@@ -133,7 +136,7 @@ case "$PROFILE" in
       ENVS+=(-e ANTHROPIC_API_KEY)
       PI_MODEL="${PI_MODEL:-claude-opus-4-7}"
       ENVS+=(-e "PI_MODEL=$PI_MODEL")
-      ARGS=("${PI_RESUME[@]}" --provider anthropic --model "$PI_MODEL" --thinking max "$EFFECTIVE_PROMPT")
+      ARGS=("${PI_RESUME[@]}" --provider anthropic --model "$PI_MODEL" --thinking "${THINKING:-max}" "$EFFECTIVE_PROMPT")
     elif [ -n "${OPENAI_API_KEY:-}" ]; then
       ENVS+=(-e OPENAI_API_KEY)
       PI_MODEL="${PI_MODEL:-gpt-5.5}"
@@ -144,10 +147,10 @@ case "$PROFILE" in
       # Other Azure OpenAI deployments (gpt-5.x) accept xhigh in practice
       # despite Azure docs listing xhigh only for gpt-5.1-codex-max.
       case "$PI_MODEL" in
-        DeepSeek-*|deepseek-*) THINKING=high ;;
-        *)                     THINKING=xhigh ;;
+        DeepSeek-*|deepseek-*) THINKING_DEFAULT=high ;;
+        *)                     THINKING_DEFAULT=xhigh ;;
       esac
-      ARGS=("${PI_RESUME[@]}" --provider openai --model "$PI_MODEL" --thinking "$THINKING" "$EFFECTIVE_PROMPT")
+      ARGS=("${PI_RESUME[@]}" --provider openai --model "$PI_MODEL" --thinking "${THINKING:-$THINKING_DEFAULT}" "$EFFECTIVE_PROMPT")
     else
       echo "pi-azure: set ANTHROPIC_API_KEY or OPENAI_API_KEY" >&2
       exit 1
@@ -156,7 +159,7 @@ case "$PROFILE" in
   pi-or)
     ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
     : "${OPENROUTER_API_KEY:?OPENROUTER_API_KEY must be set for pi-or}"
-    ARGS=("${PI_RESUME[@]}" --provider openrouter --api-key "$OPENROUTER_API_KEY" --model moonshotai/kimi-k2.6 --thinking high "$EFFECTIVE_PROMPT")
+    ARGS=("${PI_RESUME[@]}" --provider openrouter --api-key "$OPENROUTER_API_KEY" --model moonshotai/kimi-k2.6 --thinking "${THINKING:-high}" "$EFFECTIVE_PROMPT")
     ;;
   pi-gemini)
     ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
@@ -164,7 +167,7 @@ case "$PROFILE" in
     ENVS+=(-e GEMINI_API_KEY)
     PI_MODEL="${PI_MODEL:-gemini-3.1-pro-preview}"
     ENVS+=(-e "PI_MODEL=$PI_MODEL")
-    ARGS=("${PI_RESUME[@]}" --provider gemini --model "$PI_MODEL" --thinking high "$EFFECTIVE_PROMPT")
+    ARGS=("${PI_RESUME[@]}" --provider gemini --model "$PI_MODEL" --thinking "${THINKING:-high}" "$EFFECTIVE_PROMPT")
     ;;
   bash)
     ENTRYPOINT=bash

@@ -6,6 +6,7 @@ STATE_DIR ?= $(CURDIR)/state
 PROFILE   ?= claude
 GPU       ?= all
 USERNAME  ?= ubuntu
+THINKING  ?=
 
 .PHONY: image seed reseed run smoke
 
@@ -57,7 +58,7 @@ reseed:
 	$(MAKE) seed
 
 run:
-	USERNAME=$(USERNAME) ./run.sh $(PROFILE) $(GPU)
+	USERNAME=$(USERNAME) THINKING=$(THINKING) ./run.sh $(PROFILE) $(GPU)
 
 # Smoke: build image (no-op if cached), seed if needed, run the `bash` profile
 # non-interactively to verify entrypoint + mounts + uv env are all wired up.
