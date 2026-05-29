@@ -67,3 +67,29 @@ else
     || { echo "pi-patch-max-effort: models.js filter sed didn't take" >&2; exit 1; }
   echo "pi-patch-max-effort: models.js patched"
 fi
+
+# 4) Add a `claude-opus-4-8` entry under the anthropic provider in
+# models.generated.js — pi 0.75.5 only knows up to 4-7. Clones the 4-7
+# block and rewrites id/name. Idempotent: skipped if 4-8 already present.
+python3 - "$MODELS_JS" <<'PY'
+import re, sys
+fp = sys.argv[1]
+with open(fp) as f: src = f.read()
+if '"claude-opus-4-8"' in src:
+    print('pi-patch-max-effort: Opus 4.8 already in models.generated.js')
+    sys.exit(0)
+m = re.search(
+    r'(\n([ \t]+)"claude-opus-4-7":\s*\{[\s\S]*?\n\2\},)',
+    src,
+)
+if not m:
+    print('pi-patch-max-effort: could not locate top-level Opus 4.7 block; skipping 4.8 add', file=sys.stderr)
+    sys.exit(0)
+block = m.group(1)
+clone = (block
+         .replace('"claude-opus-4-7"', '"claude-opus-4-8"')
+         .replace('"Claude Opus 4.7"', '"Claude Opus 4.8"'))
+src = src[:m.end()] + clone + src[m.end():]
+with open(fp, 'w') as f: f.write(src)
+print('pi-patch-max-effort: Opus 4.8 entry added (cloned from 4.7)')
+PY

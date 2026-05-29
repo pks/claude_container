@@ -117,7 +117,7 @@ fi
 case "$PROFILE" in
   claude)
     ENTRYPOINT=claude
-    ARGS=("${CLAUDE_RESUME[@]}" --dangerously-skip-permissions --model claude-opus-4-6 --effort "${THINKING:-max}" "$EFFECTIVE_PROMPT")
+    ARGS=("${CLAUDE_RESUME[@]}" --dangerously-skip-permissions --model claude-opus-4-8 --effort "${THINKING:-max}" "$EFFECTIVE_PROMPT")
     ;;
   pi-ollama)
     ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
@@ -134,7 +134,7 @@ case "$PROFILE" in
       exit 1
     elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
       ENVS+=(-e ANTHROPIC_API_KEY)
-      PI_MODEL="${PI_MODEL:-claude-opus-4-7}"
+      PI_MODEL="${PI_MODEL:-claude-opus-4-8}"
       ENVS+=(-e "PI_MODEL=$PI_MODEL")
       ARGS=("${PI_RESUME[@]}" --provider anthropic --model "$PI_MODEL" --thinking "${THINKING:-max}" "$EFFECTIVE_PROMPT")
     elif [ -n "${OPENAI_API_KEY:-}" ]; then
