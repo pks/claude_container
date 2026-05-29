@@ -1,0 +1,14 @@
+[Unit]
+Description=Mount LABEL=exp at /home/ubuntu/exp
+DefaultDependencies=no
+Before=local-fs.target
+
+[Mount]
+What=/dev/disk/by-label/exp
+Where=/home/ubuntu/exp
+Type=xfs
+Options=defaults,nofail
+TimeoutSec=30
+
+[Install]
+WantedBy=local-fs.target

@@ -1,0 +1,25 @@
+[Unit]
+Description=Resume diffusemt agent at boot (Mithril preempt-recovery)
+After=network-online.target docker.service home-ubuntu-exp.mount
+Wants=network-online.target
+Requires=docker.service home-ubuntu-exp.mount
+RequiresMountsFor=/home/ubuntu/exp
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=ubuntu
+Group=ubuntu
+# Defaults; override via EnvironmentFile below.
+Environment=PROFILE=claude
+Environment=GPU=all
+Environment=TMUX_SESSION=diffusemt
+EnvironmentFile=-/home/ubuntu/exp/.diffusemt-resume.env
+WorkingDirectory=/home/ubuntu/exp/diffusemt
+ExecStart=/home/ubuntu/exp/diffusemt/ops/mithril-host/resume.sh
+ExecStop=/usr/bin/tmux kill-session -t ${TMUX_SESSION}
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
