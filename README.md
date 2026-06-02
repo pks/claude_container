@@ -19,7 +19,11 @@ quality with a pure diffusion model), the data/eval setup, and the iteration pro
 - `ops/` — `entrypoint.sh` (started inside the container), `mithril-watch.sh`
   (Mithril spot-preemption watcher), `mithril-hook.sh` (Claude Code PreToolUse
   hook that nudges the agent to checkpoint when preemption is signaled), and
-  `claude-settings.json` registering the hook.
+  `claude-settings.json` registering the hook. `ops/mithril-host/` holds the
+  host-side systemd kit (`home-ubuntu-exp.mount`, `diffusemt-resume.service`,
+  `resume.sh`, `install.sh`) that auto-mounts the labelled `exp` volume and
+  re-launches the agent in a detached tmux session on every boot — used on
+  Mithril spot nodes so a relocation comes back up unattended.
 - `models.json` — pi-coding-agent model registry, copied to `~/.pi/agent/models.json`.
 - `pi-settings/` — pi-coding-agent settings profiles (retry + compaction).
   `entrypoint.sh` picks `settings.gpt.json` when `PI_MODEL=gpt-*` (compacts
@@ -74,7 +78,13 @@ cp HOST-titan.md   plan/HOST.md   # on titan / titan2
 
 ```sh
 ./run.sh <profile> [gpu-id|all]
+# or
+PROFILE=<profile> GPU=<gpu-id|all> make run
 ```
+
+Bare `make run` (no args) reads back the original launch settings from
+`$STATE_DIR/.config` — see "Config persistence" below. Useful for systemd
+auto-resume and one-line restarts.
 
 Profiles:
 
@@ -127,6 +137,36 @@ host shell.
 
 Container exits don't lose work; the next `./run.sh` resumes against the same
 workspace and session.
+
+### Config persistence
+
+On the first fresh start of a state-dir (no prior session found), `run.sh`
+writes `$STATE_DIR/.config` recording how this run was launched:
+
+```ini
+written_at=2026-06-02T11:30:00Z
+state_dir=/home/ubuntu/exp/diffusemt/state
+profile=pi-azure
+model=gpt-5.5
+thinking=xhigh
+gpu=2
+image=claude-container
+claude_container_commit=dcc611d
+pi_version=0.77.0
+plan_version=PLAN 20260526
+plan_md5=b1267256a4dbbcf0acd98b921bb753ae
+```
+
+The file is written once and never overwritten on resume — delete it to
+regenerate on the next fresh start. Mid-run harness upgrades (image rebuilds,
+pi version bumps) are *not* reflected here; record those in your run-tracking
+notes instead.
+
+On every subsequent invocation, `run.sh` reads `.config` and uses it as the
+default for `PROFILE` / `GPU` / `THINKING` / `PI_MODEL`. So once a state-dir
+has been launched with a specific recipe, bare `make run` (or
+`./run.sh "" ""`) is enough to resume it — no need to remember the original
+flags. Explicit env vars or positional args still override.
 
 ### Spot / preemption handling
 
