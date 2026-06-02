@@ -46,6 +46,43 @@ quality with a pure diffusion model), the data/eval setup, and the iteration pro
   one before seeding. `plan/PLAN-D3PM.md` and `plan/NOTES.md` are auxiliary
   planning notes.
 
+## Quick start
+
+End-to-end on a fresh host (from inside this repo):
+
+```sh
+# one-time per host
+make image                                # build the image (auto-detects GPU arch)
+
+# per attempt
+cp plan/PLAN-v3.md plan/PLAN.md           # whichever PLAN to ship to the agent
+cp plan/HOST-titan.md plan/HOST.md        # or HOST-mithril.md, or skip
+cat > .env <<'EOF'
+AZURE_BASE_URL=https://...
+OPENAI_API_KEY=...
+EOF
+make seed                                 # populate $STATE_DIR/{workspace,home}
+
+# first launch (settings persist into $STATE_DIR/.config)
+PROFILE=pi-azure THINKING=max GPU=0 make run
+
+# any later restart of this state-dir
+make run                                  # PROFILE/GPU/THINKING/PI_MODEL filled from .config
+
+# optional: Mithril spot auto-resume on this node
+sudo bash ops/mithril-host/install.sh --start
+```
+
+For parallel runs on the same host (e.g. titan2 cards 0 and 1), give each
+its own `STATE_DIR` and `GPU=`:
+
+```sh
+STATE_DIR=$PWD/state-card0 GPU=0 PROFILE=pi-azure THINKING=max make seed run
+STATE_DIR=$PWD/state-card1 GPU=1 PROFILE=pi-azure THINKING=max make seed run
+```
+
+Detailed semantics in the sections below.
+
 ## Setup
 
 ```sh
