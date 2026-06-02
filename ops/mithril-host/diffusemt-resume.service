@@ -10,9 +10,8 @@ Type=oneshot
 RemainAfterExit=yes
 User=ubuntu
 Group=ubuntu
-# Defaults; override via EnvironmentFile below.
-Environment=PROFILE=claude
-Environment=GPU=all
+# PROFILE/GPU left unset: run.sh resolves them from $STATE_DIR/.config on
+# resume. Pin them via /home/ubuntu/exp/.diffusemt-resume.env if needed.
 Environment=TMUX_SESSION=diffusemt
 EnvironmentFile=-/home/ubuntu/exp/.diffusemt-resume.env
 WorkingDirectory=/home/ubuntu/exp/diffusemt

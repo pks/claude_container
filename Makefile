@@ -3,8 +3,12 @@ CUDA_VERSION := $(if $(filter blackwell,$(GPU_ARCH)),cu130,cu126)
 
 IMAGE     ?= claude-container
 STATE_DIR ?= $(CURDIR)/state
-PROFILE   ?= claude
-GPU       ?= all
+# PROFILE / GPU / THINKING default to empty so run.sh can fall through to
+# $(STATE_DIR)/.config — set them on first `make run` for a fresh state-dir
+# and they'll be remembered. Bare `make run` on a fresh dir picks "claude"
+# / "all" via run.sh's own fallback chain.
+PROFILE   ?=
+GPU       ?=
 USERNAME  ?= ubuntu
 THINKING  ?=
 
@@ -58,7 +62,7 @@ reseed:
 	$(MAKE) seed
 
 run:
-	USERNAME=$(USERNAME) THINKING=$(THINKING) ./run.sh $(PROFILE) $(GPU)
+	USERNAME=$(USERNAME) THINKING=$(THINKING) ./run.sh "$(PROFILE)" "$(GPU)"
 
 # Smoke: build image (no-op if cached), seed if needed, run the `bash` profile
 # non-interactively to verify entrypoint + mounts + uv env are all wired up.

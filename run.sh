@@ -1,13 +1,38 @@
 #!/bin/bash
 set -euo pipefail
 
-PROFILE="${1:-${PROFILE:-claude}}"
-GPU="${2:-${GPU:-all}}"
 USERNAME="${USERNAME:-ubuntu}"
 CONTAINER_HOME="/home/$USERNAME"
+STATE_DIR="${STATE_DIR:-$PWD/state}"
+
+# Pre-load defaults from $STATE_DIR/.config (written by run.sh on first
+# fresh start, see bottom of this file). Lets `make run` reuse the
+# original profile/model/thinking/gpu on resume without re-specifying
+# them. Explicit positional args and env vars still win.
+CONFIG_PROFILE= CONFIG_GPU= CONFIG_THINKING= CONFIG_MODEL=
+if [ -f "$STATE_DIR/.config" ]; then
+  while IFS='=' read -r k v; do
+    case "$k" in
+      profile)  CONFIG_PROFILE="$v" ;;
+      gpu)      CONFIG_GPU="$v" ;;
+      thinking) CONFIG_THINKING="$v" ;;
+      model)    CONFIG_MODEL="$v" ;;
+    esac
+  done < "$STATE_DIR/.config"
+fi
+
+PROFILE="${1:-${PROFILE:-${CONFIG_PROFILE:-claude}}}"
+GPU="${2:-${GPU:-${CONFIG_GPU:-all}}}"
 # Reasoning effort. Empty here triggers per-profile defaults below. Override
 # with e.g. THINKING=high make run PROFILE=pi-azure.
-THINKING="${THINKING:-}"
+THINKING="${THINKING:-${CONFIG_THINKING:-}}"
+
+# Per-profile model default sourced from .config only when the resolved
+# profile matches the recorded one — model strings are profile-specific.
+PI_MODEL_DEFAULT=
+if [ -n "$CONFIG_PROFILE" ] && [ "$CONFIG_PROFILE" = "$PROFILE" ]; then
+  PI_MODEL_DEFAULT="$CONFIG_MODEL"
+fi
 
 # Parse .env into the host shell (for script-side dispatch like pi-azure
 # key selection) and collect the names so we can forward them to the
@@ -39,9 +64,9 @@ esac
 # /workspace and $CONTAINER_HOME bind-mount from $STATE_DIR so code, ckpts,
 # sessions, plugins, npm-global, etc. survive container exits and same-
 # node-type Mithril spot relocations (which preserve the root disk).
-# `make seed` populates $STATE_DIR from the image.
+# `make seed` populates $STATE_DIR from the image. STATE_DIR itself is set
+# at the top of this script so .config can feed defaults.
 IMAGE="${IMAGE:-claude-container}"
-STATE_DIR="${STATE_DIR:-$PWD/state}"
 if [ ! -d "$STATE_DIR/workspace" ] || [ ! -d "$STATE_DIR/home" ]; then
   echo "run.sh: $STATE_DIR is not seeded — run 'make seed' first" >&2
   exit 1
@@ -117,11 +142,15 @@ fi
 case "$PROFILE" in
   claude)
     ENTRYPOINT=claude
-    ARGS=("${CLAUDE_RESUME[@]}" --dangerously-skip-permissions --model claude-opus-4-8 --effort "${THINKING:-max}" "$EFFECTIVE_PROMPT")
+    MODEL=claude-opus-4-8
+    EFFECTIVE_THINKING="${THINKING:-max}"
+    ARGS=("${CLAUDE_RESUME[@]}" --dangerously-skip-permissions --model "$MODEL" --effort "$EFFECTIVE_THINKING" "$EFFECTIVE_PROMPT")
     ;;
   pi-ollama)
     ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
-    ARGS=("${PI_RESUME[@]}" --provider ollama --model qwen3.6:35b --thinking "${THINKING:-xhigh}" "$EFFECTIVE_PROMPT")
+    MODEL=qwen3.6:35b
+    EFFECTIVE_THINKING="${THINKING:-xhigh}"
+    ARGS=("${PI_RESUME[@]}" --provider ollama --model "$MODEL" --thinking "$EFFECTIVE_THINKING" "$EFFECTIVE_PROMPT")
     ;;
   pi-azure)
     ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
@@ -134,12 +163,14 @@ case "$PROFILE" in
       exit 1
     elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
       ENVS+=(-e ANTHROPIC_API_KEY)
-      PI_MODEL="${PI_MODEL:-claude-opus-4-8}"
+      PI_MODEL="${PI_MODEL:-${PI_MODEL_DEFAULT:-claude-opus-4-8}}"
       ENVS+=(-e "PI_MODEL=$PI_MODEL")
-      ARGS=("${PI_RESUME[@]}" --provider anthropic --model "$PI_MODEL" --thinking "${THINKING:-max}" "$EFFECTIVE_PROMPT")
+      MODEL="$PI_MODEL"
+      EFFECTIVE_THINKING="${THINKING:-max}"
+      ARGS=("${PI_RESUME[@]}" --provider anthropic --model "$MODEL" --thinking "$EFFECTIVE_THINKING" "$EFFECTIVE_PROMPT")
     elif [ -n "${OPENAI_API_KEY:-}" ]; then
       ENVS+=(-e OPENAI_API_KEY)
-      PI_MODEL="${PI_MODEL:-gpt-5.5}"
+      PI_MODEL="${PI_MODEL:-${PI_MODEL_DEFAULT:-gpt-5.5}}"
       ENVS+=(-e "PI_MODEL=$PI_MODEL")
       # DeepSeek-V4-Pro on Azure caps reasoning_effort at "high" — to get
       # "max" effort you select a different model variant (PI_MODEL=
@@ -150,7 +181,9 @@ case "$PROFILE" in
         DeepSeek-*|deepseek-*) THINKING_DEFAULT=high ;;
         *)                     THINKING_DEFAULT=xhigh ;;
       esac
-      ARGS=("${PI_RESUME[@]}" --provider openai --model "$PI_MODEL" --thinking "${THINKING:-$THINKING_DEFAULT}" "$EFFECTIVE_PROMPT")
+      MODEL="$PI_MODEL"
+      EFFECTIVE_THINKING="${THINKING:-$THINKING_DEFAULT}"
+      ARGS=("${PI_RESUME[@]}" --provider openai --model "$MODEL" --thinking "$EFFECTIVE_THINKING" "$EFFECTIVE_PROMPT")
     else
       echo "pi-azure: set ANTHROPIC_API_KEY or OPENAI_API_KEY" >&2
       exit 1
@@ -159,18 +192,24 @@ case "$PROFILE" in
   pi-or)
     ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
     : "${OPENROUTER_API_KEY:?OPENROUTER_API_KEY must be set for pi-or}"
-    ARGS=("${PI_RESUME[@]}" --provider openrouter --api-key "$OPENROUTER_API_KEY" --model moonshotai/kimi-k2.6 --thinking "${THINKING:-high}" "$EFFECTIVE_PROMPT")
+    MODEL=moonshotai/kimi-k2.6
+    EFFECTIVE_THINKING="${THINKING:-high}"
+    ARGS=("${PI_RESUME[@]}" --provider openrouter --api-key "$OPENROUTER_API_KEY" --model "$MODEL" --thinking "$EFFECTIVE_THINKING" "$EFFECTIVE_PROMPT")
     ;;
   pi-gemini)
     ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
     : "${GEMINI_API_KEY:?GEMINI_API_KEY must be set for pi-gemini}"
     ENVS+=(-e GEMINI_API_KEY)
-    PI_MODEL="${PI_MODEL:-gemini-3.1-pro-preview}"
+    PI_MODEL="${PI_MODEL:-${PI_MODEL_DEFAULT:-gemini-3.1-pro-preview}}"
     ENVS+=(-e "PI_MODEL=$PI_MODEL")
-    ARGS=("${PI_RESUME[@]}" --provider gemini --model "$PI_MODEL" --thinking "${THINKING:-high}" "$EFFECTIVE_PROMPT")
+    MODEL="$PI_MODEL"
+    EFFECTIVE_THINKING="${THINKING:-high}"
+    ARGS=("${PI_RESUME[@]}" --provider gemini --model "$MODEL" --thinking "$EFFECTIVE_THINKING" "$EFFECTIVE_PROMPT")
     ;;
   bash)
     ENTRYPOINT=bash
+    MODEL=
+    EFFECTIVE_THINKING=
     ARGS=()
     ;;
   *)
@@ -178,6 +217,33 @@ case "$PROFILE" in
     exit 1
     ;;
 esac
+
+# On first fresh start, write a meta-tracking config to $STATE_DIR/.config
+# documenting which harness / model / effort this state-dir was launched
+# with. Skipped on resumes and for the bash debug profile. Persists across
+# resumes; delete the file to regenerate on the next fresh start.
+if [ "$RESUMING" = 0 ] && [ "$PROFILE" != bash ] && [ ! -f "$STATE_DIR/.config" ]; then
+  SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+  CC_COMMIT="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  PI_VERSION="$(grep -oE '@(earendil-works|mariozechner)/pi-coding-agent@[0-9.]+' "$SCRIPT_DIR/Dockerfile" 2>/dev/null | head -1 | sed 's|.*@||')"
+  cat > "$STATE_DIR/.config" <<EOF
+# claude_container startup config — written once on first fresh start.
+# Delete this file to regenerate on the next fresh start; resumes never
+# overwrite it. Mid-run harness upgrades are NOT reflected here; record
+# those in the attempt MD instead.
+
+written_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+state_dir=$STATE_DIR
+profile=$PROFILE
+model=$MODEL
+thinking=$EFFECTIVE_THINKING
+gpu=$GPU
+image=$IMAGE
+claude_container_commit=$CC_COMMIT
+pi_version=${PI_VERSION:-unknown}
+EOF
+  echo "run.sh: wrote $STATE_DIR/.config" >&2
+fi
 
 exec docker run \
   -it \

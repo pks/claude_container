@@ -4,13 +4,14 @@
 # watch. Idempotent: if the session already exists, leave it alone — that way
 # `systemctl restart diffusemt-resume` doesn't kill an in-flight run.
 #
-# Driven by env (PROFILE, GPU, TMUX_SESSION) from the unit file +
-# /home/ubuntu/exp/.diffusemt-resume.env (optional override).
+# PROFILE/GPU default to empty so run.sh falls through to
+# $STATE_DIR/.config (written on first fresh start). Override via
+# /home/ubuntu/exp/.diffusemt-resume.env if you need a per-host pin.
 set -euo pipefail
 
 SESSION="${TMUX_SESSION:-diffusemt}"
-PROFILE="${PROFILE:-claude}"
-GPU="${GPU:-all}"
+PROFILE="${PROFILE:-}"
+GPU="${GPU:-}"
 REPO="${REPO:-/home/ubuntu/exp/diffusemt}"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
