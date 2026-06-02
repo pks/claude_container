@@ -226,6 +226,16 @@ if [ "$RESUMING" = 0 ] && [ "$PROFILE" != bash ] && [ ! -f "$STATE_DIR/.config" 
   SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
   CC_COMMIT="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
   PI_VERSION="$(grep -oE '@(earendil-works|mariozechner)/pi-coding-agent@[0-9.]+' "$SCRIPT_DIR/Dockerfile" 2>/dev/null | head -1 | sed 's|.*@||')"
+  PLAN_PATH="$STATE_DIR/workspace/doc/PLAN.md"
+  if [ -f "$PLAN_PATH" ]; then
+    # PLAN.md first line follows `# PLAN <YYYYMMDD>` by convention; strip
+    # the leading `# ` so the recorded version is just `PLAN <YYYYMMDD>`.
+    PLAN_VERSION="$(head -n1 "$PLAN_PATH" | sed 's/^#[[:space:]]*//')"
+    PLAN_MD5="$(md5sum "$PLAN_PATH" | awk '{print $1}')"
+  else
+    PLAN_VERSION=unknown
+    PLAN_MD5=unknown
+  fi
   cat > "$STATE_DIR/.config" <<EOF
 # claude_container startup config — written once on first fresh start.
 # Delete this file to regenerate on the next fresh start; resumes never
@@ -241,6 +251,8 @@ gpu=$GPU
 image=$IMAGE
 claude_container_commit=$CC_COMMIT
 pi_version=${PI_VERSION:-unknown}
+plan_version=$PLAN_VERSION
+plan_md5=$PLAN_MD5
 EOF
   echo "run.sh: wrote $STATE_DIR/.config" >&2
 fi
