@@ -179,6 +179,44 @@ a nudge to commit, write `/workspace/STATUS.md`, ack via
 `/opt/mithril/` doesn't exist, so the watcher never starts and the hook
 short-circuits — everything else works the same.
 
+### Mithril spot auto-resume (systemd)
+
+Mithril spot nodes can be relocated to a fresh VM at any time. The kit in
+`ops/mithril-host/` makes the new VM mount the persistent volume and re-launch
+the agent in a detached tmux session on boot, so a relocation comes back up
+unattended. Bootstrap on a fresh node:
+
+```sh
+# 1. Format & label the persistent volume (one-time; xfs labelled `exp`).
+sudo mkfs.xfs -L exp /dev/sdX
+sudo mkdir -p /home/ubuntu/exp && sudo chown ubuntu:ubuntu /home/ubuntu/exp
+
+# 2. Clone claude_container into /home/ubuntu/exp/diffusemt/ (the path the
+#    systemd unit expects); seed state and build the image once.
+git clone <this repo> /home/ubuntu/exp/diffusemt
+cd /home/ubuntu/exp/diffusemt
+make image && make seed   # see "Setup" above
+
+# 3. (Optional) pin per-host overrides; without this, run.sh reads them from
+#    $STATE_DIR/.config on resume (see "Config persistence").
+cat > /home/ubuntu/exp/.diffusemt-resume.env <<EOF
+PROFILE=pi-azure
+GPU=all
+# THINKING=max
+EOF
+
+# 4. Install the systemd units (registers but doesn't start; pass --start to
+#    activate immediately on a fresh node).
+sudo bash ops/mithril-host/install.sh [--start]
+```
+
+Prerequisites (NVIDIA runtime, docker, tmux, ubuntu user, no fstab entry
+racing the mount unit) and operational hints (`tmux attach -t diffusemt`,
+manual start/stop) are documented in the header of `ops/mithril-host/install.sh`.
+Safe to run on a live node with an agent already running — the units are
+enabled, not started, so the next preemption-recovery boot is the first time
+systemd takes over.
+
 ### Username
 
 The image is built with `USERNAME=ubuntu` and the host UID/GID by default (see
