@@ -182,6 +182,7 @@ writes `$STATE_DIR/.config` recording how this run was launched:
 
 ```ini
 written_at=2026-06-02T11:30:00Z
+hostname=titan2
 state_dir=/home/ubuntu/exp/diffusemt/state
 profile=pi-azure
 model=gpt-5.5

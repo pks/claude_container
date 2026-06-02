@@ -243,6 +243,7 @@ if [ "$RESUMING" = 0 ] && [ "$PROFILE" != bash ] && [ ! -f "$STATE_DIR/.config" 
 # those in the attempt MD instead.
 
 written_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+hostname=$(hostname 2>/dev/null || echo unknown)
 state_dir=$STATE_DIR
 profile=$PROFILE
 model=$MODEL
