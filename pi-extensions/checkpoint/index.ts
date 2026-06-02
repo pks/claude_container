@@ -60,8 +60,17 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("message_end", (event) => {
-    const msg = event.message as { role: string };
-    if (msg.role === "assistant") pending = false;
+    const msg = event.message as { role: string; content?: Array<{ type: string }> };
+    if (msg.role !== "assistant") return;
+    // Only clear `pending` when the assistant actually emitted a text
+    // response — pure-tool-call turns (e.g. an agent in a long monitoring
+    // loop of bash → result → next bash → …) emit message_end every cycle
+    // but never engage with our queued nudge. Clearing on those lets the
+    // next tick queue *another* nudge that will also be ignored, stacking.
+    // Requiring a text block ensures we only re-arm after the agent has
+    // genuinely re-engaged.
+    const hasText = Array.isArray(msg.content) && msg.content.some((c) => c.type === "text");
+    if (hasText) pending = false;
   });
 
   pi.on("session_shutdown", () => {
