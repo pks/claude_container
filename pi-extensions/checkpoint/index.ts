@@ -30,8 +30,15 @@ function buildNudge(snapshot: string): string {
 export default function (pi: ExtensionAPI) {
   if (!ENABLED) return;
   let timer: ReturnType<typeof setInterval> | undefined;
+  // Suppress a new nudge while a previous one is still queued — otherwise a
+  // long-running agent turn (training watch, eval, etc.) lets nudges stack
+  // up at the cadence and we get a wall of "Checkpoint reminder" follow-ups
+  // delivered in one batch. Cleared once the agent emits an assistant
+  // message, which means any queued user messages have been consumed.
+  let pending = false;
 
   const tick = async () => {
+    if (pending) return;
     let snapshot: string;
     try {
       snapshot = await getResourceSnapshot(DISK_PATH);
@@ -40,6 +47,7 @@ export default function (pi: ExtensionAPI) {
     }
     try {
       pi.sendUserMessage(buildNudge(snapshot), { deliverAs: "followUp" });
+      pending = true;
     } catch (err) {
       process.stderr.write(`[checkpoint] sendUserMessage failed: ${String(err)}\n`);
     }
@@ -51,10 +59,16 @@ export default function (pi: ExtensionAPI) {
     timer.unref?.();
   });
 
+  pi.on("message_end", (event) => {
+    const msg = event.message as { role: string };
+    if (msg.role === "assistant") pending = false;
+  });
+
   pi.on("session_shutdown", () => {
     if (timer) {
       clearInterval(timer);
       timer = undefined;
     }
+    pending = false;
   });
 }
