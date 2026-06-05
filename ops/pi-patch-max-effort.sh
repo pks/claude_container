@@ -69,8 +69,9 @@ else
 fi
 
 # 4) Add a `claude-opus-4-8` entry under the anthropic provider in
-# models.generated.js — pi 0.75.5 only knows up to 4-7. Clones the 4-7
-# block and rewrites id/name. Idempotent: skipped if 4-8 already present.
+# models.generated.js if missing. Needed for pi <= 0.77.x (which only knew
+# up to 4-7); pi 0.78.1+ ships 4-8 natively, making this a no-op. Clones the
+# 4-7 block and rewrites id/name. Idempotent: skipped if 4-8 already present.
 python3 - "$MODELS_JS" <<'PY'
 import re, sys
 fp = sys.argv[1]
