@@ -71,6 +71,7 @@ RUN rm -f README.md main.py \
 # Claude plugins + pi-coding-agent + caveman skill
 RUN claude plugin marketplace add JuliusBrussee/caveman \
  && claude plugin install caveman@caveman \
+ && claude plugin enable caveman@caveman \
  && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
  && npm config set prefix '~/.npm-global' \
  && npm install -g @earendil-works/pi-coding-agent@0.78.1 \

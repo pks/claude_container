@@ -20,7 +20,13 @@ fi
 # instead: profile keys (retry/compaction) win; everything else is preserved.
 PI_SETTINGS_TARGET="${HOME:-/home/ubuntu}/.pi/agent/settings.json"
 PI_SETTINGS_SRC_DIR=/etc/pi-settings
-if [ -d "$PI_SETTINGS_SRC_DIR" ]; then
+# Only run pi-settings profile selection when actually launching pi. Claude
+# Code runs don't need it, and the [entrypoint] log line is misleading then.
+case "${1:-}" in
+  pi|*/pi) RUN_PI_SETTINGS=1 ;;
+  *)       RUN_PI_SETTINGS=0 ;;
+esac
+if [ "$RUN_PI_SETTINGS" = 1 ] && [ -d "$PI_SETTINGS_SRC_DIR" ]; then
   case "${PI_MODEL:-}" in
     gpt-*|GPT-*) profile=gpt ;;
     *)           profile=default ;;
