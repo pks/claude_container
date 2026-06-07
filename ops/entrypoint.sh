@@ -18,7 +18,7 @@ fi
 # image build time. A plain overwrite would wipe that field and silently
 # disable every pi extension (azure-anthropic, gemini, mithril, …). Merge
 # instead: profile keys (retry/compaction) win; everything else is preserved.
-PI_SETTINGS_TARGET=/home/ubuntu/.pi/agent/settings.json
+PI_SETTINGS_TARGET="${HOME:-/home/ubuntu}/.pi/agent/settings.json"
 PI_SETTINGS_SRC_DIR=/etc/pi-settings
 if [ -d "$PI_SETTINGS_SRC_DIR" ]; then
   case "${PI_MODEL:-}" in
