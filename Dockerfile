@@ -68,10 +68,11 @@ RUN rm -f README.md main.py \
  && git add * .python-version .gitignore \
  && git commit -m init
 
-# Claude plugins + pi-coding-agent + caveman skill
+# Claude plugins + pi-coding-agent + caveman skill. Plugin enable state is
+# declared in ops/claude-settings.json (copied near the end of this file) —
+# install fetches the plugin code, settings.json wires up the enable.
 RUN claude plugin marketplace add JuliusBrussee/caveman \
  && claude plugin install caveman@caveman \
- && claude plugin enable caveman@caveman \
  && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
  && npm config set prefix '~/.npm-global' \
  && npm install -g @earendil-works/pi-coding-agent@0.78.1 \
