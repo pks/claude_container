@@ -91,9 +91,14 @@ MOUNTS=(
 ENVS=(
   -e CLAUDE_CODE_THEME=dark
   -e CLAUDE_CODE_ACCEPT_TOS=yes
-  -e CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=yes
   -e CLAUDE_CODE_SKIP_TRUST_SCREEN=1
 )
+# Disable adaptive thinking by default so --effort is a hard level. Set
+# ADAPTIVE_THINKING=on (or any non-empty value) to leave it on — useful for
+# Fable 5 / Opus 4.8 where the model picks effort dynamically.
+if [ -z "${ADAPTIVE_THINKING:-}" ]; then
+  ENVS+=(-e CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=yes)
+fi
 # Forward every variable declared in .env into the container — adding one
 # there auto-propagates without script changes. Names came from the safe
 # parser above; `-e VAR` (no value) tells docker to pull from our env.
