@@ -127,7 +127,7 @@ Profiles:
 
 | Profile     | Agent / provider                                                 |
 |-------------|------------------------------------------------------------------|
-| `claude`    | Claude Code, `claude-opus-4-8`, `--effort max`                   |
+| `claude`    | Claude Code, `claude-opus-4-8` (override with `MODEL=...`, e.g. `MODEL=claude-fable-5`), `--effort max` |
 | `pi-ollama` | pi against a local Ollama (`qwen3.6:35b`)                        |
 | `pi-azure`  | pi against Azure; set `AZURE_BASE_URL` and one of `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`. Override the model with `PI_MODEL=...` (e.g. `PI_MODEL=DeepSeek-V4-Pro` for DeepSeek on Azure AI Foundry) |
 | `pi-gemini` | pi against Google's OpenAI-compatible Gemini endpoint (`gemini-3.1-pro-preview` by default; override with `PI_MODEL=...`). Needs `GEMINI_API_KEY`. Implicit prompt caching only — no `cache_control` markers via the compat layer. Set `PI_GEMINI_DEBUG=1` for request/response logging to `/workspace/log/gemini-debug.log`. |

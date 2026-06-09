@@ -142,7 +142,7 @@ fi
 case "$PROFILE" in
   claude)
     ENTRYPOINT=claude
-    MODEL=claude-opus-4-8
+    MODEL="${MODEL:-claude-opus-4-8}"
     EFFECTIVE_THINKING="${THINKING:-max}"
     ARGS=("${CLAUDE_RESUME[@]}" --dangerously-skip-permissions --model "$MODEL" --effort "$EFFECTIVE_THINKING" "$EFFECTIVE_PROMPT")
     ;;
