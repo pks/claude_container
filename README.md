@@ -137,8 +137,8 @@ Profiles:
 `run.sh` checks for an existing session under the profile's session directory
 inside `$STATE_DIR/home/`. If found, it resumes via `--continue` / `-c` with a
 resume prompt; otherwise it starts fresh with
-`/skill:caveman lite\ncarry out doc/PLAN.md` (`pi-or` runs the full caveman
-skill instead of caveman lite).
+`/skill:caveman\ncarry out doc/PLAN.md` — the full caveman skill on every profile
+(Claude Code uses `/caveman`).
 
 Host `~/.claude/.credentials.json` and `~/.claude.json` are mounted in if
 present so the `claude` profile reuses host auth.

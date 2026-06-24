@@ -109,8 +109,8 @@ if [ "${#ENV_NAMES_FROM_FILE[@]}" -gt 0 ]; then
 fi
 
 # Per-profile session location and fresh-start prompt. The resume prompt is
-# shared across profiles; only the fresh prompt varies (pi-or runs full
-# caveman rather than caveman lite).
+# shared across profiles; the fresh prompt runs the full caveman skill on every
+# profile (only the slash-command syntax differs: Claude Code /caveman, pi /skill:caveman).
 case "$PROFILE" in
   claude)                                       SESSION_DIR=.claude/projects ;;
   pi-ollama|pi-azure|pi-or|pi-gemini)           SESSION_DIR=.pi/agent/sessions ;;
@@ -121,9 +121,9 @@ case "$PROFILE" in
   # the newline to separate the slash command from the user message; pi
   # parses its /skill: invocations regardless of separator format but the
   # real newline does no harm there either.
-  claude) FRESH_PROMPT=$'/caveman lite\ncarry out doc/PLAN.md' ;;
+  claude) FRESH_PROMPT=$'/caveman\ncarry out doc/PLAN.md' ;;
   pi-or)  FRESH_PROMPT=$'/skill:caveman\ncarry out doc/PLAN.md' ;;
-  *)      FRESH_PROMPT=$'/skill:caveman lite\ncarry out doc/PLAN.md' ;;
+  *)      FRESH_PROMPT=$'/skill:caveman\ncarry out doc/PLAN.md' ;;
 esac
 RESUME_PROMPT='Your prior session was interrupted (Mithril spot preemption or a manual exit) and is now being resumed. /workspace and your prior session are bind-mounted from host-persistent storage, so they survived intact. Read /workspace/STATUS.md if present, check `git log` and the working-tree state, then continue carrying out doc/PLAN.md from where you left off. Once you have re-established context, run `rm -f /workspace/.shutdown-acked` so any future preemption is handled cleanly.'
 
