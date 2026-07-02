@@ -56,9 +56,37 @@ if [ -f .env ]; then
   done < .env
 fi
 
+# --gpus alone is not enough: the nvidia runtime hook injects the GPU
+# behind Docker's back, so Docker/systemd never record the device nodes.
+# With cgroup v2 + the systemd cgroup driver, any `systemctl daemon-reload`
+# (apt upgrades, unit edits, ...) rebuilds the container's device cgroup
+# from what Docker recorded — and the GPU vanishes from the running
+# container ("Failed to initialize NVML: Unknown Error"). Passing the
+# nodes explicitly with --device registers them with Docker so reloads
+# re-apply them. See "Containers losing access to GPUs" in
+# https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/troubleshooting.html
+GPU_FLAG=()
+add_dev() { if [ -e "$1" ]; then GPU_FLAG+=(--device "$1"); fi; }
+for d in /dev/nvidiactl /dev/nvidia-uvm /dev/nvidia-uvm-tools \
+         /dev/nvidia-modeset /dev/nvidia-nvswitchctl /dev/nvidia-caps/*; do
+  add_dev "$d"
+done
 case "$GPU" in
-  all) GPU_FLAG=(--gpus all) ;;
-  *)   GPU_FLAG=(--gpus "device=$GPU") ;;
+  all)
+    GPU_FLAG+=(--gpus all)
+    for d in /dev/nvidia[0-9]*; do add_dev "$d"; done
+    ;;
+  *)
+    GPU_FLAG+=(--gpus "device=$GPU")
+    if [[ "$GPU" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
+      IFS=',' read -ra GPU_IDS <<< "$GPU"
+      for id in "${GPU_IDS[@]}"; do add_dev "/dev/nvidia$id"; done
+    else
+      # UUID or other selector — no direct /dev node mapping; pass all
+      # nodes (cgroup access only; visibility still set by --gpus).
+      for d in /dev/nvidia[0-9]*; do add_dev "$d"; done
+    fi
+    ;;
 esac
 
 # /workspace and $CONTAINER_HOME bind-mount from $STATE_DIR so code, ckpts,
