@@ -55,7 +55,8 @@ RUN uv add \
       'sacrebleu==2.6.0' \
       'sentencepiece==0.2.1' \
       'tensorboard==2.20.0' \
-      'tbparse==0.0.9'
+      'tbparse==0.0.9' \
+      'unbabel-comet==2.2.7'
 
 
 # Initialize workspace repo. Append project-specific ignores (checkpoints,
