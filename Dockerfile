@@ -109,8 +109,7 @@ RUN pi install /tmp/pi-extensions/azure-anthropic \
  && pi install /tmp/pi-extensions/gemini \
  && pi install /tmp/pi-extensions/mithril \
  && pi install /tmp/pi-extensions/checkpoint \
- && pi install /tmp/pi-extensions/resources \
- && pi install npm:pi-web-access
+ && pi install /tmp/pi-extensions/resources
 
 # Mithril spot-interruption handling: entrypoint wrapper, signal-file
 # watcher, and Claude Code PreToolUse hook. Data persistence is handled
