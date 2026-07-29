@@ -85,9 +85,13 @@ function injectIntoPayload(payload: unknown, nudge: string): boolean {
     (p.messages as unknown[]).push({ role: "user", content: nudge });
     return true;
   }
-  // OpenAI Responses: { input: [{role, content: [{type, text}]}] }
+  // OpenAI Responses: { input: [{type, role, content: [{type, text}]}] }.
+  // The top-level `type: "message"` is required by Azure's AI-Foundry
+  // Responses schema (the public OpenAI endpoint infers it); omitting it
+  // makes the injected nudge request 400 during a preemption.
   if (Array.isArray(p.input)) {
     (p.input as unknown[]).push({
+      type: "message",
       role: "user",
       content: [{ type: "input_text", text: nudge }],
     });

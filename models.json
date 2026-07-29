@@ -16,7 +16,7 @@
             "max": "xhigh"
           },
           "input": ["text"],
-          "contextWindow": 400000,
+          "contextWindow": 1050000,
           "maxTokens": 128000
         },
         {

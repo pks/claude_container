@@ -23,6 +23,30 @@ export default function (pi: ExtensionAPI) {
 
   installAzureRetryFetch(base);
 
+  // Azure's AI-Foundry Responses endpoint strictly validates every `input[]`
+  // item's `type` against an enum; the public OpenAI endpoint infers it.
+  // pi-ai (through 0.82.1) still omits `type` on some input items, which
+  // serializes as `""` and Azure rejects with:
+  //   400 Invalid value: ''. Supported values are: '...','message','reasoning',...
+  // Normalize before send: give every input item an explicit, inferred type.
+  // Only fills a missing/empty type; never overrides an already-valid one.
+  pi.on("before_provider_request", (event) => {
+    const payload = (event as { payload?: unknown }).payload;
+    if (!payload || typeof payload !== "object") return;
+    const input = (payload as Record<string, unknown>).input;
+    if (!Array.isArray(input)) return;
+    for (const raw of input) {
+      if (!raw || typeof raw !== "object") continue;
+      const it = raw as Record<string, unknown>;
+      if (typeof it.type === "string" && it.type !== "") continue;
+      if ("call_id" in it && "output" in it) it.type = "function_call_output";
+      else if ("call_id" in it && ("arguments" in it || "name" in it)) it.type = "function_call";
+      else if ("summary" in it || "encrypted_content" in it) it.type = "reasoning";
+      else if ("role" in it && "content" in it) it.type = "message";
+      else it.type = "message";
+    }
+  });
+
   pi.on("message_end", (event) => {
     const msg = event.message as {
       role: string;

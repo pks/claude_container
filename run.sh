@@ -196,14 +196,14 @@ case "$PROFILE" in
       exit 1
     elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
       ENVS+=(-e ANTHROPIC_API_KEY)
-      PI_MODEL="${PI_MODEL:-${PI_MODEL_DEFAULT:-claude-opus-4-8}}"
+      PI_MODEL="${PI_MODEL:-${PI_MODEL_DEFAULT:-claude-opus-5}}"
       ENVS+=(-e "PI_MODEL=$PI_MODEL")
       MODEL="$PI_MODEL"
       EFFECTIVE_THINKING="${THINKING:-max}"
       ARGS=("${PI_RESUME[@]}" --provider anthropic --model "$MODEL" --thinking "$EFFECTIVE_THINKING" "$EFFECTIVE_PROMPT")
     elif [ -n "${OPENAI_API_KEY:-}" ]; then
       ENVS+=(-e OPENAI_API_KEY)
-      PI_MODEL="${PI_MODEL:-${PI_MODEL_DEFAULT:-gpt-5.5}}"
+      PI_MODEL="${PI_MODEL:-${PI_MODEL_DEFAULT:-gpt-5.6-sol}}"
       ENVS+=(-e "PI_MODEL=$PI_MODEL")
       # DeepSeek-V4-Pro on Azure caps reasoning_effort at "high" — to get
       # "max" effort you select a different model variant (PI_MODEL=

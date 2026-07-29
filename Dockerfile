@@ -11,7 +11,7 @@ RUN apt update && apt upgrade -y && apt dist-upgrade -y \
  && apt install -y --no-install-recommends \
       ca-certificates curl less git procps sudo unzip gnupg2 gh jq \
       cmake g++ make ripgrep fd-find python3.12-dev \
- && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+ && curl -4fsSL --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 https://deb.nodesource.com/setup_24.x | bash - \
  && apt install -y nodejs \
  && apt autoremove && apt clean
 
@@ -38,8 +38,8 @@ RUN git config --global user.email "${USERNAME}@localhost" \
  && git config --global user.name "${USERNAME}"
 
 # Claude Code + uv
-RUN curl -fsSL https://claude.ai/install.sh | bash \
- && curl -LsSf https://astral.sh/uv/install.sh | sh
+RUN curl -4fsSL --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 https://claude.ai/install.sh | bash \
+ && curl -4LsSf --retry 100 --retry-all-errors --retry-delay 2 --retry-max-time 600 https://astral.sh/uv/install.sh | sh
 
 # Python environment — uv init in one layer, deps in the next so changing a
 # dep version doesn't invalidate the project scaffold.
@@ -74,16 +74,10 @@ RUN rm -f README.md main.py \
 # install fetches the plugin code, settings.json wires up the enable.
 RUN claude plugin marketplace add JuliusBrussee/caveman \
  && claude plugin install caveman@caveman \
- && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
+ && curl -4 --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
  && npm config set prefix '~/.npm-global' \
  && npm install -g @earendil-works/pi-coding-agent@0.82.1 \
  && npx skills add JuliusBrussee/caveman --yes
-
-# Patch pi to accept --thinking max for Opus 4.7. See ops/pi-patch-max-effort.sh
-# for rationale (Opus 4.7 supports effort=max via Anthropic API; pi's built-in
-# definitions and validation list cap at xhigh — outdated).
-COPY --chown=${USER_UID}:${USER_GID} ops/pi-patch-max-effort.sh /tmp/pi-patch-max-effort.sh
-RUN bash /tmp/pi-patch-max-effort.sh && rm /tmp/pi-patch-max-effort.sh
 
 # Tools
 RUN mkdir -p tools \

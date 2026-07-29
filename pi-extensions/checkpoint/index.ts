@@ -39,6 +39,12 @@ export default function (pi: ExtensionAPI) {
 
   const tick = async () => {
     if (pending) return;
+    // Hard anti-stack: if a message is still sitting in the delivery queue
+    // (0.82+ exposes hasPendingMessages), skip — otherwise a long tool-call
+    // turn lets nudges pile up and get delivered as a batch. The `pending`
+    // bool above covers the window after dequeue but before the agent
+    // re-engages with a text reply.
+    if (pi.hasPendingMessages?.()) return;
     let snapshot: string;
     try {
       snapshot = await getResourceSnapshot(DISK_PATH);
