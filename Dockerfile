@@ -42,8 +42,15 @@ RUN curl -4fsSL --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 
  && curl -4LsSf --retry 100 --retry-all-errors --retry-delay 2 --retry-max-time 600 https://astral.sh/uv/install.sh | sh
 
 # Python environment — uv init in one layer, deps in the next so changing a
-# dep version doesn't invalidate the project scaffold.
-RUN uv init --python 3.12 \
+# dep version doesn't invalidate the project scaffold. `--no-package`: plain
+# app layout (pyproject + main.py + .python-version + .gitignore, no src/).
+# Without it, uv 0.12 `uv init` scaffolds a *packaged* project named after
+# the workdir ("workspace") at src/workspace/__init__.py + a uv_build
+# [build-system]; that gets committed and then collides with the agent's own
+# src/ layout (code ends up nested under src/workspace/). `--bare` would go
+# too far — it also drops .python-version/.gitignore, breaking the git add
+# below and un-ignoring .venv.
+RUN uv init --no-package --python 3.12 \
  && sed -i 's/requires-python.*/requires-python = "==3.12.*"/' pyproject.toml \
  && printf '\n[tool.uv]\nindex-strategy = "unsafe-best-match"\n\n[[tool.uv.index]]\nname = "pytorch"\nurl = "https://download.pytorch.org/whl/%s"\n\n[tool.uv.sources]\ntorch = { index = "pytorch" }\n' "${CUDA_VERSION}" >> pyproject.toml
 
