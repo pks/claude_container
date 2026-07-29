@@ -18,11 +18,15 @@ function upgradeCacheTtlInPlace(value: unknown): void {
 
 export default function (pi: ExtensionAPI) {
   const base = process.env.AZURE_BASE_URL;
-  if (!base) {
-    // Extensions load on every pi startup regardless of profile. pi-gemini /
-    // pi-or runs don't set AZURE_BASE_URL — throw here would surface a loud
-    // load error every time. Silently no-op instead; pi-azure's run.sh sets
-    // the var explicitly and a missing value there would have failed earlier.
+  // Extensions load on every pi startup regardless of profile. Only register
+  // the anthropic provider when this run is actually an Azure *anthropic* run
+  // — i.e. AZURE_BASE_URL and ANTHROPIC_API_KEY are both set (run.sh sets
+  // exactly one of ANTHROPIC_API_KEY / OPENAI_API_KEY for pi-azure). Gating on
+  // the key (not just the base) avoids registering a stray anthropic provider
+  // on an openai run, which makes pi's model-resolver also try to resolve the
+  // openai model under anthropic and emit a spurious "not found for provider
+  // anthropic" warning. pi-gemini / pi-or runs set neither → silent no-op.
+  if (!base || !process.env.ANTHROPIC_API_KEY) {
     return;
   }
   pi.registerProvider("anthropic", {

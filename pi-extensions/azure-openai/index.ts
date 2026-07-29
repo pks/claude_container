@@ -12,9 +12,11 @@ const AZURE_TRANSIENT_PATTERNS = [/no error details in response/i];
 
 export default function (pi: ExtensionAPI) {
   const base = process.env.AZURE_BASE_URL;
-  if (!base) {
-    // See azure-anthropic for rationale: silently skip when not on the
-    // pi-azure profile so other profiles' startup stays quiet.
+  // Only register the openai provider on an Azure *openai* run (base +
+  // OPENAI_API_KEY both set; run.sh sets exactly one of the two keys). Gating
+  // on the key avoids a stray openai provider on an anthropic run and the
+  // symmetric spurious model-resolver warning. See azure-anthropic.
+  if (!base || !process.env.OPENAI_API_KEY) {
     return;
   }
   pi.registerProvider("openai", {
