@@ -103,6 +103,10 @@ COPY --chown=${USER_UID}:${USER_GID} models.json /home/${USERNAME}/.pi/agent/mod
 COPY --chown=${USER_UID}:${USER_GID} pi-settings /etc/pi-settings
 RUN install -m 0644 /etc/pi-settings/settings.default.json \
                     /home/${USERNAME}/.pi/agent/settings.json
+# Pre-trust the workspace so pi 0.82+ doesn't block first startup on its
+# interactive trust prompt (agent runs headless). trust-manager keys on the
+# canonical cwd; the container always runs pi with cwd=/workspace.
+RUN printf '{\n  "/workspace": true\n}\n' > /home/${USERNAME}/.pi/agent/trust.json
 COPY --chown=${USER_UID}:${USER_GID} pi-extensions /tmp/pi-extensions
 RUN pi install /tmp/pi-extensions/azure-anthropic \
  && pi install /tmp/pi-extensions/azure-openai \
