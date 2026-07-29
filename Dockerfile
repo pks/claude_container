@@ -76,7 +76,7 @@ RUN claude plugin marketplace add JuliusBrussee/caveman \
  && claude plugin install caveman@caveman \
  && curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
  && npm config set prefix '~/.npm-global' \
- && npm install -g @earendil-works/pi-coding-agent@0.78.1 \
+ && npm install -g @earendil-works/pi-coding-agent@0.82.1 \
  && npx skills add JuliusBrussee/caveman --yes
 
 # Patch pi to accept --thinking max for Opus 4.7. See ops/pi-patch-max-effort.sh
