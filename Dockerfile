@@ -10,10 +10,24 @@ ARG CUDA_VERSION=cu130
 RUN apt update && apt upgrade -y && apt dist-upgrade -y \
  && apt install -y --no-install-recommends \
       ca-certificates curl less git procps sudo unzip gnupg2 gh jq \
-      cmake g++ make ripgrep fd-find python3.12-dev \
+      cmake g++ make ripgrep fd-find python3.12-dev ninja-build python-is-python3 \
  && curl -4fsSL --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 https://deb.nodesource.com/setup_24.x | bash - \
  && apt install -y nodejs \
+ && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
  && apt autoremove && apt clean
+
+# CUDA 13.0 toolkit (nvcc + headers) so agents can JIT-compile custom torch
+# C++/CUDA extensions (e.g. a DA-Transformer DAG best-alignment kernel) via
+# torch.utils.cpp_extension. The torch cu130 wheel ships only the CUDA
+# runtime, not the compiler; without nvcc/CUDA_HOME those builds fail. Matches
+# the wheel's CUDA 13.0. (~4-6 GB.)
+RUN curl -4fsSL --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 \
+      -o /tmp/cuda-keyring.deb \
+      https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
+ && dpkg -i /tmp/cuda-keyring.deb && rm /tmp/cuda-keyring.deb \
+ && apt update && apt install -y --no-install-recommends cuda-toolkit-13-0 \
+ && ln -sf /usr/local/cuda-13.0 /usr/local/cuda \
+ && apt clean && rm -rf /var/lib/apt/lists/*
 
 # Rename the built-in `ubuntu` user to ${USERNAME} and align UID/GID with host
 RUN if [ "${USERNAME}" != "ubuntu" ]; then \
@@ -32,6 +46,10 @@ USER ${USER_UID}:${USER_GID}
 ENV HOME=/home/${USERNAME}
 ENV SHELL=/bin/bash
 ENV PATH="/home/${USERNAME}/.npm-global/bin:/home/${USERNAME}/.local/bin:$PATH"
+# CUDA toolkit on PATH so nvcc + torch.utils.cpp_extension find the compiler.
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH="$CUDA_HOME/bin:$PATH"
+ENV LD_LIBRARY_PATH="$CUDA_HOME/lib64"
 
 # Git
 RUN git config --global user.email "${USERNAME}@localhost" \
@@ -70,7 +88,9 @@ RUN uv add \
 # logs, tensorboard event files) to the .gitignore that uv init created,
 # so the agent's per-version commits don't store large binary artifacts.
 # Without this, .git/ mirrors every saved ckpt and bloats the workspace.
-RUN rm -f README.md main.py \
+# Keep README.md — pyproject's `readme = "README.md"` points at it, and uv
+# metadata reads (uv build / some tooling) error if it's missing.
+RUN rm -f main.py \
  && printf '\n# Training artifacts — do not commit\nckpt/\nlog/\ntb/\nruns/\n*.pt\n*.safetensors\n' >> .gitignore \
  && git branch -M main \
  && git add * .python-version .gitignore \
