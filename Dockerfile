@@ -93,6 +93,13 @@ RUN mkdir -p tools \
  && cd tools/fast_align/build && cmake .. && make -j$(nproc)
 ENV PATH="$PATH:/workspace/tools/fast_align/build"
 
+# Put the project venv first on PATH so bare `python`/`pip` resolve to the
+# torch-equipped interpreter. The container ships no unversioned `python`
+# (only `uv` + `/usr/bin/python3` without deps), so agents that reflexively
+# call `python foo.py` otherwise hit "command not found" or a torch-less
+# python3. `/workspace/.venv` is built here and bind-mounted at runtime.
+ENV PATH="/workspace/.venv/bin:$PATH"
+
 # Project structure + pi extension. plan/PLAN.md is dropped into doc/ by
 # `make seed` rather than baked in, so it lives in $STATE_DIR alongside the
 # rest of the working tree.
