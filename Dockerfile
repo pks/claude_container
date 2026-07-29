@@ -86,16 +86,16 @@ COPY --chown=${USER_UID}:${USER_GID} ops/pi-patch-max-effort.sh /tmp/pi-patch-ma
 RUN bash /tmp/pi-patch-max-effort.sh && rm /tmp/pi-patch-max-effort.sh
 
 # Tools
-RUN mkdir tools \
+RUN mkdir -p tools \
  && git clone https://github.com/clab/fast_align.git tools/fast_align \
- && mkdir tools/fast_align/build \
+ && mkdir -p tools/fast_align/build \
  && cd tools/fast_align/build && cmake .. && make -j$(nproc)
 ENV PATH="$PATH:/workspace/tools/fast_align/build"
 
 # Project structure + pi extension. plan/PLAN.md is dropped into doc/ by
 # `make seed` rather than baked in, so it lives in $STATE_DIR alongside the
 # rest of the working tree.
-RUN mkdir src doc d ckpt log
+RUN mkdir -p src doc d ckpt log
 COPY --chown=${USER_UID}:${USER_GID} models.json /home/${USERNAME}/.pi/agent/models.json
 # Pi compaction/retry profiles. entrypoint.sh installs the right one at
 # container start based on PI_MODEL; the default seeds the image so
