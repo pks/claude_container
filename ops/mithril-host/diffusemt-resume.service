@@ -1,9 +1,15 @@
 [Unit]
 Description=Resume diffusemt agent at boot (Mithril preempt-recovery)
 After=network-online.target docker.service home-ubuntu-exp.mount
-Wants=network-online.target
-Requires=docker.service home-ubuntu-exp.mount
-RequiresMountsFor=/home/ubuntu/exp
+# Deliberately soft (Wants=, not Requires=/RequiresMountsFor=). On a Mithril
+# relocation the exp volume attaches asynchronously and home-ubuntu-exp.mount
+# can miss its timeout on that boot. A hard Requires= would then mark this
+# oneshot "dependency failed" — and Type=oneshot has no Restart, so it NEVER
+# fires again, leaving the GPU idle until manual rescue (observed 2026-07-31:
+# both A100 DAG nodes idle ~5h). Wants=+After= only orders us after the mount
+# *attempt*; resume.sh then waits for the mount and docker to actually come up
+# before launching, so a late attach is recovered instead of fatal.
+Wants=network-online.target docker.service home-ubuntu-exp.mount
 
 [Service]
 Type=oneshot

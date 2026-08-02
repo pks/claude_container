@@ -7,8 +7,13 @@ Before=local-fs.target
 What=/dev/disk/by-label/exp
 Where=/home/ubuntu/exp
 Type=xfs
-Options=defaults,nofail
-TimeoutSec=30
+# x-systemd.device-timeout gives udev up to 5 min for the by-label device to
+# appear before the mount unit fails — on a Mithril relocation the exp volume
+# can take >30s to attach, which was failing the old 30s mount and cascading
+# into the resume service. nofail keeps a slow/absent disk from blocking boot;
+# resume.sh independently waits for the mount before launching.
+Options=defaults,nofail,x-systemd.device-timeout=300
+TimeoutSec=300
 
 [Install]
 WantedBy=local-fs.target
