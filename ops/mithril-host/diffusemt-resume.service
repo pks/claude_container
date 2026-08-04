@@ -2,13 +2,21 @@
 Description=Resume diffusemt agent at boot (Mithril preempt-recovery)
 After=network-online.target docker.service home-ubuntu-exp.mount
 # Deliberately soft (Wants=, not Requires=/RequiresMountsFor=). On a Mithril
-# relocation the exp volume attaches asynchronously and home-ubuntu-exp.mount
-# can miss its timeout on that boot. A hard Requires= would then mark this
-# oneshot "dependency failed" — and Type=oneshot has no Restart, so it NEVER
-# fires again, leaving the GPU idle until manual rescue (observed 2026-07-31:
-# both A100 DAG nodes idle ~5h). Wants=+After= only orders us after the mount
-# *attempt*; resume.sh then waits for the mount and docker to actually come up
-# before launching, so a late attach is recovered instead of fatal.
+# relocation the exp volume attaches asynchronously — the by-label device unit
+# can time out (~90s default) and fail home-ubuntu-exp.mount's first job, even
+# though the disk appears seconds later and the mount then succeeds. A hard
+# dep on the mount would mark this oneshot "dependency failed" — and Type=oneshot
+# has no Restart, so it NEVER fires again, leaving the GPU idle until manual
+# rescue (observed 2026-07-31 and 2026-08-04). Wants=+After= only orders us
+# after the mount *attempt*; resume.sh then waits for the mount and docker to
+# actually come up before launching, so a late attach is recovered, not fatal.
+#
+# CRITICAL: do NOT set WorkingDirectory= (or any *Directory=/*Paths=) under
+# /home/ubuntu/exp — systemd auto-injects an implicit RequiresMountsFor= for
+# such paths, a HARD Requires+After on the mount that silently defeats the soft
+# Wants= above (this is exactly what bit the v1 hardening). For the same reason
+# ExecStart points at a copy of resume.sh in /usr/local/bin (OFF the mount), so
+# the unit can start and run its wait-loop before the volume is even attached.
 Wants=network-online.target docker.service home-ubuntu-exp.mount
 
 [Service]
@@ -20,8 +28,7 @@ Group=ubuntu
 # resume. Pin them via /home/ubuntu/exp/.diffusemt-resume.env if needed.
 Environment=TMUX_SESSION=diffusemt
 EnvironmentFile=-/home/ubuntu/exp/.diffusemt-resume.env
-WorkingDirectory=/home/ubuntu/exp/diffusemt
-ExecStart=/home/ubuntu/exp/diffusemt/ops/mithril-host/resume.sh
+ExecStart=/usr/local/bin/diffusemt-resume.sh
 ExecStop=/usr/bin/tmux kill-session -t ${TMUX_SESSION}
 StandardOutput=journal
 StandardError=journal

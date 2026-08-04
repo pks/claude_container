@@ -29,6 +29,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 install -m 0644 "$HERE/home-ubuntu-exp.mount"     /etc/systemd/system/home-ubuntu-exp.mount
 install -m 0644 "$HERE/diffusemt-resume.service"  /etc/systemd/system/diffusemt-resume.service
+# resume.sh must live OFF the exp mount: the unit's ExecStart runs before the
+# volume is guaranteed attached (soft mount dep + in-script wait), so a copy
+# under /home/ubuntu/exp would be unreadable at that point. Install to /usr/local/bin.
+install -m 0755 "$HERE/resume.sh"                 /usr/local/bin/diffusemt-resume.sh
 
 # Keep ubuntu's user-systemd instance alive across login-free boots; without
 # this, the detached tmux server gets reaped seconds after ExecStart returns.
