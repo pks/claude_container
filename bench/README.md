@@ -40,6 +40,14 @@ make bench PROFILE=pi-azure GPU=all         # egress lock + 12h compute clock + 
 Preemptible hosts: `sudo bash ops/host-resume/install.sh` (after editing
 `/etc/mtbench-resume.env`) so a reboot auto-resumes through the same launcher.
 
+**The task card is NOT baked into the image.** `make bench-stage`+`make seed` drop it
+into the seeded workspace at `$STATE_DIR/workspace/doc/PLAN.md` (with `doc/HOST.md`) —
+`/workspace` is bind-mounted from `$STATE_DIR` at runtime, so image content there is
+shadowed anyway, and the task lives in the durable state that survives preemption. To
+change the task, edit `bench/TASKCARD.md` (or `plan/PLAN.md` directly), re-run
+`make bench-stage && make reseed` (or drop the new `doc/PLAN.md` into a fresh
+`$STATE_DIR`) — **no image rebuild needed**.
+
 ## Score a submission
 
 ```
