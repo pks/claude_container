@@ -1,102 +1,72 @@
 # MachineTranslationModelingBench
 
-An agentic ML benchmark: drop a frontier coding agent on one GPU with raw WMT14
-EN→DE and 12 h of compute, and measure the translation model it trains from
-scratch. Forked from the claude_container harness (branch `bench`).
+Agentic ML benchmark: drop a frontier coding agent on one GPU with raw WMT14 EN→DE
+and 12 h of compute; measure the MT model it trains from scratch. Forked from the
+claude_container harness (branch `bench`). Agent sees `TASKCARD.md`; operator reads
+this + `scorer/README.md`.
 
 ## Quick start
 
 ```
-# 1. build + run one bench (needs .env with AZURE_BASE_URL + one API key)
-make image
-make bench-stage
-make seed
-make bench PROFILE=pi-azure GPU=all
+# build + run (needs .env with AZURE_BASE_URL + one API key)
+make image                                    # build mtbench-container (bakes WMT14 train+dev)
+make bench-stage                              # TASKCARD.md->plan/PLAN.md, HOST-bench.md->plan/HOST.md
+make seed                                     # populate $STATE_DIR from the image
+make bench PROFILE=pi-azure GPU=all           # egress lock + 12h compute clock + agent
 
-# 2. (preemptible hosts) auto-resume on reboot
-sudo bash ops/host-resume/install.sh --start   # after editing /etc/mtbench-resume.env
+# preemptible hosts: auto-resume on reboot (after editing /etc/mtbench-resume.env)
+sudo bash ops/host-resume/install.sh --start
 
-# 3. score the submission
+# score the submission
 cd bench/scorer
-python3 prepare_test.py testdata/               # once, online
+python3 prepare_test.py testdata/             # once, online — test held here, never in the image
 IMAGE=mtbench-container SEED=1 DECODE_BUDGET=3600 ./score.sh <state>/workspace/submission
 ```
 
-## What's here
+## Files
 
-| file | role |
+| path | role |
 |---|---|
-| `TASKCARD.md` | agent-facing spec (goal, rules, deliverable, scoring) — seeded to `doc/PLAN.md` |
+| `TASKCARD.md` | agent-facing spec — seeded to `doc/PLAN.md` |
 | `HOST-bench.md` | host facts — seeded to `doc/HOST.md` |
-| `SCORING.md` | operator-facing harness + scoring design |
-| `HARNESS.md` | build roadmap + component→origin map |
-| `scorer/` | external scorer: test held here, canaries, run `decode.sh`, sacreBLEU once |
+| `scorer/` | external scorer (holds test, canaries, runs `decode.sh`, sacreBLEU once) — see `scorer/README.md` |
 | `../ops/bench-egress.sh` | launcher: egress lock + compute-time budget |
-| `../ops/host-resume/` | generic preempt-resume unit (compute-clock aware) |
+| `../ops/host-resume/` | generic preempt-resume unit |
+
+The **task card is not baked into the image** — `bench-stage`+`seed` drop it into
+`$STATE_DIR/workspace/doc/PLAN.md` (which the `/workspace` bind-mount would shadow
+anyway; it lives in durable state that survives preemption). Change the task = edit
+`TASKCARD.md`, `make bench-stage && make reseed` — no image rebuild.
 
 ## Integrity model
 
-- **Airgap except inference** (`bench-egress.sh` egress lock, fail-closed) → from-
-  scratch + no-external-data + no-ref-lookup by construction.
-- **Test never in the agent's world** — baked image has train+dev only; the scorer
-  holds test.
-- **Deliverable = weights + `decode.sh`**, the harness runs it on the withheld test
-  with `--network none` → no self-translate / peek / phone-home.
-- **Canaries** hide which lines count + tripwire special-casing; **10 GB cap** +
-  advisory provenance scan bound smuggled models.
+- **Airgap except inference** (egress lock, fail-closed) → from-scratch, no external
+  data, no ref lookup, by construction.
+- **Test never in the agent's world** — image has train+dev only; the scorer holds test.
+- **Deliverable = `submission/`** (weights + `decode.sh`); the harness runs it on the
+  withheld test, `--network none`, mounting **only** `submission/` (10 GB cap on the
+  whole dir) → no self-translate / peek / phone-home / cap-dodge.
+- **Canaries** sampled from real dev (indistinguishable from test) hide which lines
+  count + tripwire special-casing; advisory provenance scan; **agent runs unprivileged**.
 - **Compute-time budget** (not wall) → preemption doesn't confound the score.
 
-## Run it
+## Design (fork of claude_container)
 
-```
-make image                                  # build mtbench-container (online: bakes WMT14 train+dev)
-make bench-stage                            # TASKCARD.md->plan/PLAN.md, HOST-bench.md->plan/HOST.md
-make seed                                   # populate $STATE_DIR from the image
-make bench PROFILE=pi-azure GPU=all         # egress lock + 12h compute clock + agent
-```
+- **Reused:** base image (CUDA/torch/uv/pi), GPU handling, state bind-mount, seed/run,
+  azure-openai/anthropic extensions.
+- **New:** offline data-bake (test withheld), egress lock (allowlist proxy), scorer +
+  canaries, compute-time clock, generic auto-resume.
+- **Stripped:** mithril-specific spot machinery; Claude Code CLI + caveman (pi-only for
+  reproducibility); agent sudo.
 
-Preemptible hosts: `sudo bash ops/host-resume/install.sh` (after editing
-`/etc/mtbench-resume.env`) so a reboot auto-resumes through the same launcher.
+## Runtime verification (docker + GPU host, 2026-08-06)
 
-**The task card is NOT baked into the image.** `make bench-stage`+`make seed` drop it
-into the seeded workspace at `$STATE_DIR/workspace/doc/PLAN.md` (with `doc/HOST.md`) —
-`/workspace` is bind-mounted from `$STATE_DIR` at runtime, so image content there is
-shadowed anyway, and the task lives in the durable state that survives preemption. To
-change the task, edit `bench/TASKCARD.md` (or `plan/PLAN.md` directly), re-run
-`make bench-stage && make reseed` (or drop the new `doc/PLAN.md` into a fresh
-`$STATE_DIR`) — **no image rebuild needed**.
+1. ✅ Data resolves (datasets 4.8.5, no `trust_remote_code`); test excluded. Fixed a
+   real assertion bug — HF names the test file `wmt14-test.arrow`, not `newstest2014`.
+2. ✅ Egress fail-closed — `--internal` net gets no internet and no DNS.
+3. ✅ Scorer end-to-end through docker; **isolation confirmed** (decode can't read
+   outside `submission/`); void on wrong line count.
+4. ✅ Compute-clock fairness (active-only, gap-free) + resume guards.
 
-## Score a submission
-
-```
-cd bench/scorer
-python3 prepare_test.py testdata/           # ONCE, online: newstest2014 + dev.src -> testdata/ (host-only)
-IMAGE=mtbench-container SEED=<seed> DECODE_BUDGET=3600 ./score.sh <state>/workspace/submission
-```
-→ `result.json`: `test_bleu`, `sacrebleu_sig`, decode time, submission bytes, canary check.
-The scorer mounts ONLY `submission/` (10 GB cap on the whole dir), runs `decode.sh`
-locked down (`--network none`, non-root, caps dropped, tmpfs scratch), and draws
-canaries from real dev source so they're indistinguishable from test.
-
-## Runtime verification (done on a docker + GPU host, 2026-08-06)
-
-1. ✅ **Data resolve + test-exclusion** — `load_dataset('wmt/wmt14','de-en')` resolves
-   under datasets 4.8.5 with **no `trust_remote_code`**; `save_to_disk` keeps
-   train(4,508,785)+validation(3,000), test excluded (structural). Caught + fixed a
-   real bug: HF names the test file `wmt14-test.arrow`, not `newstest2014`, so the
-   build assertion's pattern was useless — corrected + verified (passes clean, catches
-   a stray `wmt14-test.arrow`).
-2. ✅ **Egress fail-closed** — from an `--internal` network the real image gets **no
-   internet and no DNS** (`BLOCKED` / `NO-DNS`), so a client ignoring the proxy leaks
-   nothing. (tinyproxy allowlist *forwarding* still wants a check on the built image;
-   fail-closed is the guarantee regardless.)
-3. ✅ **Scorer end-to-end through docker** — full pipeline (dev-sourced canaries →
-   shuffle → locked `--network none` decode → strip → sacreBLEU, correct signature),
-   void on wrong line count, and the **HIGH isolation fix confirmed**: decode could not
-   read a file outside `submission/`.
-4. ✅ **Compute-clock + resume** — clock fairness (active-only, preemption gap free,
-   caps at budget) proven in isolation; auto-resume guards (skip on `.bench_done`,
-   skip on live agent container, proxy excluded) verified.
-
-Remaining (need a full 12 h run / built image, not blockers): a real-model GPU decode,
-and tinyproxy allowlist forwarding on the built `mtbench-container`.
+Residual (need a full run / built image, not blockers): real-model GPU decode,
+tinyproxy allowlist forwarding on the built image.
