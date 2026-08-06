@@ -145,7 +145,7 @@ RUN rm -f main.py \
 # reproducibility). nvm provides node for the npm-global pi install.
 RUN curl -4 --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
  && npm config set prefix '~/.npm-global' \
- && npm install -g @earendil-works/pi-coding-agent@0.82.1
+ && npm install -g @earendil-works/pi-coding-agent@0.84.0
 
 # Tools
 RUN mkdir -p tools \
