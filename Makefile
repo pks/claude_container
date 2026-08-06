@@ -1,7 +1,7 @@
 GPU_ARCH := $(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | awk -F. '{v=$$1*10+$$2; if(v>=100) print "blackwell"; else if(v>=80) print "ampere"; else print "turing"}')
 CUDA_VERSION := cu130
 
-IMAGE     ?= claude-container
+IMAGE     ?= mtbench-container
 STATE_DIR ?= $(CURDIR)/state
 # PROFILE / GPU / THINKING default to empty so run.sh can fall through to
 # $(STATE_DIR)/.config — set them on first `make run` for a fresh state-dir
@@ -12,7 +12,22 @@ GPU       ?=
 USERNAME  ?= ubuntu
 THINKING  ?=
 
-.PHONY: image seed reseed run smoke
+.PHONY: image seed reseed run smoke bench bench-stage
+
+# Stage the bench task card + host file into plan/ so `make seed` ships them to
+# doc/ (plan/ is gitignored — these are the per-deployment inputs the agent sees).
+bench-stage:
+	@mkdir -p plan
+	@cp bench/TASKCARD.md plan/PLAN.md
+	@cp bench/HOST-bench.md plan/HOST.md
+	@echo "staged: bench/TASKCARD.md -> plan/PLAN.md, bench/HOST-bench.md -> plan/HOST.md"
+	@echo "next: make seed && make bench PROFILE=pi-azure GPU=all"
+
+# Launch a bench run: egress lock + compute-time budget + the agent. Preemption-
+# aware (resumes via ops/host-resume if installed). See bench/README.md.
+bench:
+	IMAGE=$(IMAGE) STATE_DIR=$(STATE_DIR) USERNAME=$(USERNAME) THINKING=$(THINKING) \
+	  ./ops/bench-egress.sh "$(PROFILE)" "$(GPU)"
 
 image:
 	@echo "Detected GPU_ARCH=$(GPU_ARCH) CUDA_VERSION=$(CUDA_VERSION)"

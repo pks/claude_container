@@ -62,7 +62,18 @@ preemptible hosts. On-demand still works (no resume unit installed = single segm
 2. Egress lock (needs the mechanism decision).
 3. Scorer sidecar + canary gen (the bench core; independent of the agent image).
 4. 12h enforcement + from-scratch inspection.
-5. Wire TASKCARD/HOST-bench into seed; end-to-end smoke on one throwaway run.
+5. Wire TASKCARD/HOST-bench into seed — DONE. `make bench-stage` copies
+   `bench/TASKCARD.md`→`plan/PLAN.md` + `bench/HOST-bench.md`→`plan/HOST.md`; `make seed`
+   ships them to `doc/`. `make bench` = egress+clock launcher. IMAGE renamed
+   `claude-container`→`mtbench-container` (Makefile+run.sh). TASKCARD/SCORING/README/
+   HOST-bench now live in-branch (self-contained). End-to-end smoke still needs a
+   docker+GPU host (see README "Runtime-verify TODO").
+
+## Status: v0 complete (modulo GPU-host verification)
+
+All 7 pieces built + committed on `bench`. Verified in isolation (scorer plumbing,
+canaries, compute-clock fairness, shells). Not yet run on a real docker+GPU host —
+those are the 4 runtime-verify TODOs in bench/README.md.
 
 ## Invariants
 

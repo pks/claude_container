@@ -93,7 +93,7 @@ esac
 # sessions, plugins, npm-global, etc. survive container exits and restarts.
 # `make seed` populates $STATE_DIR from the image. STATE_DIR itself is set
 # at the top of this script so .config can feed defaults.
-IMAGE="${IMAGE:-claude-container}"
+IMAGE="${IMAGE:-mtbench-container}"
 if [ ! -d "$STATE_DIR/workspace" ] || [ ! -d "$STATE_DIR/home" ]; then
   echo "run.sh: $STATE_DIR is not seeded — run 'make seed' first" >&2
   exit 1
