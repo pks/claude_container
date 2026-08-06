@@ -4,6 +4,24 @@ An agentic ML benchmark: drop a frontier coding agent on one GPU with raw WMT14
 EN→DE and 12 h of compute, and measure the translation model it trains from
 scratch. Forked from the claude_container harness (branch `bench`).
 
+## Quick start
+
+```
+# 1. build + run one bench (needs .env with AZURE_BASE_URL + one API key)
+make image
+make bench-stage
+make seed
+make bench PROFILE=pi-azure GPU=all
+
+# 2. (preemptible hosts) auto-resume on reboot
+sudo bash ops/host-resume/install.sh --start   # after editing /etc/mtbench-resume.env
+
+# 3. score the submission
+cd bench/scorer
+python3 prepare_test.py testdata/               # once, online
+IMAGE=mtbench-container SEED=1 DECODE_BUDGET=3600 ./score.sh <state>/workspace/submission
+```
+
 ## What's here
 
 | file | role |
