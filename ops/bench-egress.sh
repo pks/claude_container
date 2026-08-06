@@ -40,9 +40,30 @@ docker run -d --name "$PROXY_NAME" --network "$NET" \
 docker network connect "$NET_EXT" "$PROXY_NAME"
 echo "bench-egress: proxy '$PROXY_NAME' up on network '$NET'" >&2
 
-# Hand off to run.sh with the agent pinned to the internal net + proxy env.
+# Tear the proxy + networks down whenever we exit (cap hit, agent done, or error).
+cleanup() {
+  docker rm -f "$PROXY_NAME" >/dev/null 2>&1 || true
+  docker network rm "$NET" "$NET_EXT" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+# Run the agent pinned to the internal net + proxy env, under the bench wall clock.
+# At the cap: SIGINT (lets the agent flush its deliverable), then SIGKILL after a
+# grace. The deliverable is durable regardless — /workspace is bind-mounted to
+# $STATE_DIR/workspace on the host, so whatever exists at stop time persists; the
+# agent is told to keep model/ + decode.sh current. No explicit snapshot needed.
 export IMAGE DOCKER_NETWORK="$NET"
 export HTTPS_PROXY="http://${PROXY_NAME}:${PROXY_PORT}"
 export HTTP_PROXY="$HTTPS_PROXY"
 export NO_PROXY="localhost,127.0.0.1"
-exec ./run.sh "$@"
+BENCH_WALL="${BENCH_WALL:-12h}"
+GRACE="${BENCH_KILL_GRACE:-120}"
+
+start="$(date -u +%FT%TZ)"
+echo "bench-egress: agent start $start, wall clock $BENCH_WALL (grace ${GRACE}s)" >&2
+rc=0
+timeout --signal=SIGINT --kill-after="${GRACE}" "$BENCH_WALL" ./run.sh "$@" || rc=$?
+end="$(date -u +%FT%TZ)"
+[ "$rc" = 124 ] && echo "bench-egress: WALL-CLOCK CAP hit at $BENCH_WALL" >&2
+echo "bench-egress: agent window $start -> $end (rc=$rc)" >&2
+echo "bench-egress: deliverable in \$STATE_DIR/workspace (model/ + decode.sh); score with bench/scorer/score.sh" >&2

@@ -27,6 +27,9 @@ bytes=$(du -sb "$ARTIFACT/model" | cut -f1)
 [ "$bytes" -le "$CAP" ] || { echo "void: model/ ${bytes}B exceeds 10GB cap" >&2; exit 2; }
 [ -f "$TESTDIR/test.src" ] && [ -f "$TESTDIR/test.ref" ] || { echo "no test data in $TESTDIR (run prepare_test.py)" >&2; exit 1; }
 
+# advisory from-scratch provenance scan (airgap is the real enforcement)
+python3 "$SCRIPTDIR/check_from_scratch.py" "$ARTIFACT" | tee "$WORK/from_scratch.json" >&2
+
 # 2-3. canaries + shuffled decode input (+ recorded permutation)
 python3 "$SCRIPTDIR/make_canaries.py" "$K" "$SEED" "$WORK/canaries.txt"
 python3 "$SCRIPTDIR/build_input.py" "$TESTDIR/test.src" "$WORK/canaries.txt" \

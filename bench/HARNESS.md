@@ -28,12 +28,17 @@ the implementation roadmap and the component→origin map.
 2. **Offline data bake** — Dockerfile layer: WMT14 train+dev(refs) cached in image,
    `HF_DATASETS_OFFLINE=1`/`TRANSFORMERS_OFFLINE=1`, drop `HF_TOKEN`. **Test data NOT
    in image.**
-3. **12h enforcement + snapshot** — wall-clock killer + freeze workspace at cap.
+3. **12h enforcement** — DONE. `ops/bench-egress.sh` wraps the agent in
+   `timeout --signal=SIGINT --kill-after=GRACE $BENCH_WALL` (default 12h) + a teardown
+   trap. No explicit snapshot: /workspace is bind-mounted to `$STATE_DIR/workspace`,
+   so the deliverable at stop time is already durable on the host.
 4. **Scorer sidecar** — DONE (`bench/scorer/`). Holds test data; canary-inject →
    run `decode.sh` in a `--network none` image copy → strip → sacreBLEU once. Pure-
    python plumbing validated (perfect→100, garbage→0, void on line-count mismatch).
-5. **Canary generator** — per-run synthetic EN source lines.
-6. **from-scratch inspection** — assert non-pretrained init / artifact provenance.
+5. **Canary generator** — DONE (`bench/scorer/make_canaries.py`, folded into scorer).
+6. **from-scratch inspection** — DONE (advisory). `bench/scorer/check_from_scratch.py`
+   scans the artifact for foreign-provenance markers (wired into score.sh, advisory).
+   Real enforcement is the airgap: no pretrained weights in the image, none fetchable.
 
 ## Strip (mithril spot machinery — irrelevant for on-demand bench)
 
