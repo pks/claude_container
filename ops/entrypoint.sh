@@ -1,14 +1,6 @@
 #!/bin/bash
 set -eu
 
-# Background the Mithril spot-interruption watcher when the signal mount is
-# present. Without it the watcher has nothing to do.
-if [ -d /opt/mithril ]; then
-  mkdir -p /workspace/log
-  /usr/local/bin/mithril-watch.sh >>/workspace/log/mithril-watch.log 2>&1 &
-  echo "[entrypoint] mithril watcher started (pid $!)"
-fi
-
 # Switch pi's settings.json based on the active model. GPT-5 series has a
 # 272K-input pricing cliff (2x input / 1.5x output above that), so it gets a
 # profile that compacts well before that line; everything else uses the
@@ -16,7 +8,7 @@ fi
 #
 # The seeded settings.json carries `.extensions` populated by `pi install` at
 # image build time. A plain overwrite would wipe that field and silently
-# disable every pi extension (azure-anthropic, gemini, mithril, …). Merge
+# disable every pi extension (azure-anthropic, gemini, …). Merge
 # instead: profile keys (retry/compaction) win; everything else is preserved.
 PI_SETTINGS_TARGET="${HOME:-/home/ubuntu}/.pi/agent/settings.json"
 PI_SETTINGS_SRC_DIR=/etc/pi-settings

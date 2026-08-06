@@ -139,21 +139,13 @@ COPY --chown=${USER_UID}:${USER_GID} pi-extensions /tmp/pi-extensions
 RUN pi install /tmp/pi-extensions/azure-anthropic \
  && pi install /tmp/pi-extensions/azure-openai \
  && pi install /tmp/pi-extensions/gemini \
- && pi install /tmp/pi-extensions/mithril \
  && pi install /tmp/pi-extensions/checkpoint \
  && pi install /tmp/pi-extensions/resources
 
-# Mithril spot-interruption handling: entrypoint wrapper, signal-file
-# watcher, and Claude Code PreToolUse hook. Data persistence is handled
-# host-side via bind mounts in run.sh, not by this image.
+# Entrypoint wrapper (pi settings-profile selection + `exec "$@"`). The bench
+# runs on-demand with no preemption, so no spot-interruption watcher/hook.
 USER root
 COPY ops/entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY ops/mithril-watch.sh /usr/local/bin/mithril-watch.sh
-COPY ops/mithril-hook.sh /usr/local/bin/mithril-hook.sh
-COPY ops/mithril-nudge.txt /usr/local/share/mithril-nudge.txt
-RUN chmod 0755 /usr/local/bin/entrypoint.sh \
-               /usr/local/bin/mithril-watch.sh \
-               /usr/local/bin/mithril-hook.sh \
- && chmod 0644 /usr/local/share/mithril-nudge.txt
+RUN chmod 0755 /usr/local/bin/entrypoint.sh
 USER ${USER_UID}:${USER_GID}
 COPY --chown=${USER_UID}:${USER_GID} ops/claude-settings.json /home/${USERNAME}/.claude/settings.json

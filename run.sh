@@ -90,8 +90,7 @@ case "$GPU" in
 esac
 
 # /workspace and $CONTAINER_HOME bind-mount from $STATE_DIR so code, ckpts,
-# sessions, plugins, npm-global, etc. survive container exits and same-
-# node-type Mithril spot relocations (which preserve the root disk).
+# sessions, plugins, npm-global, etc. survive container exits and restarts.
 # `make seed` populates $STATE_DIR from the image. STATE_DIR itself is set
 # at the top of this script so .config can feed defaults.
 IMAGE="${IMAGE:-claude-container}"
@@ -110,11 +109,6 @@ MOUNTS=(
   && MOUNTS+=(-v ~/.claude/.credentials.json:"$CONTAINER_HOME/.claude/.credentials.json")
 [ -f ~/.claude.json ] \
   && MOUNTS+=(-v ~/.claude.json:"$CONTAINER_HOME/.claude.json")
-
-# Mithril spot signal — the in-container watcher polls it and SIGINTs the
-# agent on preemption.
-[ -d /opt/mithril ] \
-  && MOUNTS+=(-v /opt/mithril:/opt/mithril:ro)
 
 ENVS=(
   -e CLAUDE_CODE_THEME=dark
@@ -153,7 +147,7 @@ case "$PROFILE" in
   pi-or)  FRESH_PROMPT=$'/skill:caveman\ncarry out doc/PLAN.md' ;;
   *)      FRESH_PROMPT=$'/skill:caveman\ncarry out doc/PLAN.md' ;;
 esac
-RESUME_PROMPT='Your prior session was interrupted (Mithril spot preemption or a manual exit) and is now being resumed. /workspace and your prior session are bind-mounted from host-persistent storage, so they survived intact. Read /workspace/STATUS.md if present, check `git log` and the working-tree state, then continue carrying out doc/PLAN.md from where you left off. Once you have re-established context, run `rm -f /workspace/.shutdown-acked` so any future preemption is handled cleanly.'
+RESUME_PROMPT='Your prior session was interrupted (a manual exit or restart) and is now being resumed. /workspace and your prior session are bind-mounted from host-persistent storage, so they survived intact. Read /workspace/STATUS.md if present, check `git log` and the working-tree state, then continue carrying out doc/PLAN.md from where you left off.'
 
 RESUMING=0
 [ -n "$SESSION_DIR" ] \
