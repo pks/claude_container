@@ -14,13 +14,12 @@ THINKING  ?=
 
 .PHONY: image seed reseed run smoke bench bench-stage
 
-# Stage the bench task card + host file into plan/ so `make seed` ships them to
-# doc/ (plan/ is gitignored — these are the per-deployment inputs the agent sees).
+# Stage the bench task card into plan/ so `make seed` ships it to doc/PLAN.md
+# (plan/ is gitignored — this is the per-deployment input the agent sees).
 bench-stage:
 	@mkdir -p plan
 	@cp bench/TASKCARD.md plan/PLAN.md
-	@cp bench/HOST-bench.md plan/HOST.md
-	@echo "staged: bench/TASKCARD.md -> plan/PLAN.md, bench/HOST-bench.md -> plan/HOST.md"
+	@echo "staged: bench/TASKCARD.md -> plan/PLAN.md"
 	@echo "next: make seed && make bench PROFILE=pi-azure GPU=all"
 
 # Launch a bench run: egress lock + compute-time budget + the agent. Preemption-

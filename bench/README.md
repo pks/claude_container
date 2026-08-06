@@ -10,7 +10,7 @@ this + `scorer/README.md`.
 ```
 # build + run (needs .env with AZURE_BASE_URL + one API key)
 make image                                    # build mtbench-container (bakes WMT14 train+dev)
-make bench-stage                              # TASKCARD.md->plan/PLAN.md, HOST-bench.md->plan/HOST.md
+make bench-stage                              # TASKCARD.md -> plan/PLAN.md
 make seed                                     # populate $STATE_DIR from the image
 make bench PROFILE=pi-azure GPU=all           # egress lock + 12h compute clock + agent
 
@@ -28,7 +28,6 @@ IMAGE=mtbench-container SEED=1 DECODE_BUDGET=3600 ./score.sh <state>/workspace/s
 | path | role |
 |---|---|
 | `TASKCARD.md` | agent-facing spec — seeded to `doc/PLAN.md` |
-| `HOST-bench.md` | host facts — seeded to `doc/HOST.md` |
 | `scorer/` | external scorer (holds test, canaries, runs `decode.sh`, sacreBLEU once) — see `scorer/README.md` |
 | `../ops/bench-egress.sh` | launcher: egress lock + compute-time budget |
 | `../ops/host-resume/` | generic preempt-resume unit |

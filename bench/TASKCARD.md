@@ -21,7 +21,6 @@ data cleaning, and recipe are up to you — devising them is the task.
   clean. Final test decode runs on the harness, not your clock.
 - **Offline** except your reasoning endpoint. No `pip install` / downloads / data
   fetches — everything is baked in.
-- Host paths / credentials / launch details: see the **HOST** file.
 
 ## Data
 
@@ -61,7 +60,8 @@ The harness mounts **only** `submission/`; the **10 GB cap is on the whole dir**
   **Output line N ↔ input line N** (restore order if you batch/sort, else score
   collapses). Runs **offline, deterministic**, using only baked deps + files inside
   `submission/`, **relative paths** (mounted elsewhere than `/workspace`). Must finish
-  within the HOST decode budget. If it doesn't run, you don't score.
+  decoding the test within the **decode budget** (~1 h on the A100; harness-enforced).
+  If it doesn't run in time, you don't score.
 - **`from_scratch.json`** — random-init seed(s) + from-scratch attestation.
 - At workspace root: **`RESULTS.md`** (dev-BLEU-vs-time, config, decode) +
   **`STATUS.md`** (state + resume notes).
