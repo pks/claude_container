@@ -29,8 +29,9 @@ the implementation roadmap and the component→origin map.
    `HF_DATASETS_OFFLINE=1`/`TRANSFORMERS_OFFLINE=1`, drop `HF_TOKEN`. **Test data NOT
    in image.**
 3. **12h enforcement + snapshot** — wall-clock killer + freeze workspace at cap.
-4. **Scorer sidecar** — holds test data; canary-inject → run submitted `decode.sh` in
-   a no-net copy of the same image → strip canaries → sacreBLEU once. Bench core.
+4. **Scorer sidecar** — DONE (`bench/scorer/`). Holds test data; canary-inject →
+   run `decode.sh` in a `--network none` image copy → strip → sacreBLEU once. Pure-
+   python plumbing validated (perfect→100, garbage→0, void on line-count mismatch).
 5. **Canary generator** — per-run synthetic EN source lines.
 6. **from-scratch inspection** — assert non-pretrained init / artifact provenance.
 
