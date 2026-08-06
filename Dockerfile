@@ -9,7 +9,7 @@ ARG CUDA_VERSION=cu130
 # System packages
 RUN apt update && apt upgrade -y && apt dist-upgrade -y \
  && apt install -y --no-install-recommends \
-      ca-certificates curl less git procps sudo unzip gnupg2 gh jq \
+      ca-certificates curl less git procps unzip gnupg2 gh jq \
       cmake g++ make ripgrep fd-find python3.12-dev ninja-build python-is-python3 \
       tinyproxy \
  && curl -4fsSL --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 https://deb.nodesource.com/setup_24.x | bash - \
@@ -30,15 +30,17 @@ RUN curl -4fsSL --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 
  && ln -sf /usr/local/cuda-13.0 /usr/local/cuda \
  && apt clean && rm -rf /var/lib/apt/lists/*
 
-# Rename the built-in `ubuntu` user to ${USERNAME} and align UID/GID with host
+# Rename the built-in `ubuntu` user to ${USERNAME} and align UID/GID with host.
+# NO sudo grant: the bench agent runs as an unprivileged user — training is all
+# userspace (/workspace/.venv, user-owned /opt/mtbench), the env is offline so
+# there's nothing to apt-install anyway, and no root means the agent can't weaken
+# its own sandbox. Build-time root steps use explicit `USER root` blocks below.
 RUN if [ "${USERNAME}" != "ubuntu" ]; then \
       groupmod -n ${USERNAME} ubuntu \
       && usermod -l ${USERNAME} -d /home/${USERNAME} -m ubuntu; \
     fi \
  && if [ "${USER_GID}" != "$(id -g ${USERNAME})" ]; then groupmod -g ${USER_GID} ${USERNAME}; fi \
  && if [ "${USER_UID}" != "$(id -u ${USERNAME})" ]; then usermod -u ${USER_UID} ${USERNAME}; fi \
- && echo "${USERNAME} ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/${USERNAME} \
- && chmod 0440 /etc/sudoers.d/${USERNAME} \
  && mkdir -p /workspace /home/${USERNAME}/.pi/agent \
  && chown -R ${USER_UID}:${USER_GID} /workspace /home/${USERNAME}
 
