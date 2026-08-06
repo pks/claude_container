@@ -54,7 +54,11 @@ docker network inspect "$NET_EXT" >/dev/null 2>&1 || docker network create "$NET
 # (re)start the proxy: on the internal net (agent talks to it) + the external net
 # (it can reach the inference host). Nothing else bridges the two.
 docker rm -f "$PROXY_NAME" >/dev/null 2>&1 || true
-docker run -d --name "$PROXY_NAME" --network "$NET" \
+# --user 0: the proxy writes its allowlist to /etc/tinyproxy (root-owned) and the
+# agent image drops sudo/root, so the sidecar needs root to start. It's an
+# isolated infra container (only tinyproxy, only reachable from the internal net),
+# not the agent — running it as root is fine.
+docker run -d --name "$PROXY_NAME" --network "$NET" --user 0 \
   -e INFERENCE_ALLOWLIST="$INFERENCE_ALLOWLIST" \
   --entrypoint /usr/local/bin/proxy-entrypoint.sh "$IMAGE" >/dev/null
 docker network connect "$NET_EXT" "$PROXY_NAME"

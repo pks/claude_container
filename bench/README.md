@@ -62,7 +62,9 @@ anyway; it lives in durable state that survives preemption). Change the task = e
 
 1. ✅ Data resolves (datasets 4.8.5, no `trust_remote_code`); test excluded. Fixed a
    real assertion bug — HF names the test file `wmt14-test.arrow`, not `newstest2014`.
-2. ✅ Egress fail-closed — `--internal` net gets no internet and no DNS.
+2. ✅ Egress — `--internal` net fail-closed (no internet, no DNS); the allowlist proxy
+   forwards only the inference host (allowed=200, denied=403), and pi honors it via
+   `NODE_USE_ENV_PROXY=1`. (Proxy sidecar runs `--user 0` to write its allowlist.)
 3. ✅ Scorer end-to-end through docker; **isolation confirmed** (decode can't read
    outside `submission/`); void on wrong line count.
 4. ✅ Compute-clock fairness (active-only, gap-free) + resume guards.

@@ -123,6 +123,10 @@ fi
 for pv in HTTPS_PROXY HTTP_PROXY NO_PROXY https_proxy http_proxy no_proxy; do
   [ -n "${!pv:-}" ] && ENVS+=(-e "$pv=${!pv}")
 done
+# Node 24's global fetch/undici only honors the proxy env when NODE_USE_ENV_PROXY
+# is set — without it pi ignores HTTPS_PROXY, and on the --internal bench net that
+# means it reaches nothing and hangs. Set it whenever a proxy is configured.
+[ -n "${HTTPS_PROXY:-}${https_proxy:-}" ] && ENVS+=(-e NODE_USE_ENV_PROXY=1)
 
 # pi session location (for resume detection) + fresh-start prompt. Caveman is
 # dropped for reproducibility — the agent gets a neutral instruction, no skill.
