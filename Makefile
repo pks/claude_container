@@ -65,10 +65,6 @@ seed: image
 	    && docker cp $$cid:/home/$(USERNAME)/. $(STATE_DIR)/home/ \
 	    && docker rm $$cid >/dev/null \
 	    && cp plan/PLAN.md $(STATE_DIR)/workspace/doc/PLAN.md; \
-	  if [ -f plan/HOST.md ]; then \
-	    cp plan/HOST.md $(STATE_DIR)/workspace/doc/HOST.md; \
-	    echo "seeding: shipped plan/HOST.md -> doc/HOST.md"; \
-	  fi; \
 	fi
 
 reseed:
