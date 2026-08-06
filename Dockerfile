@@ -80,9 +80,39 @@ RUN uv add \
       'sacrebleu==2.6.0' \
       'sentencepiece==0.2.1' \
       'tensorboard==2.20.0' \
-      'tbparse==0.0.9' \
-      'unbabel-comet==2.2.7'
+      'tbparse==0.0.9'
+# NB: no unbabel-comet / CometKiwi here — the bench forbids pretrained models
+# (incl. as a data-selection filter), and offline runtime can't fetch it anyway.
+# COMET as a scoring metric lives in the external scorer, not the agent image.
 
+# Bench data: WMT14 EN-DE train + dev (newstest2013) baked at /opt/mtbench,
+# OUTSIDE the runtime bind-mounts (/workspace and /home come from STATE_DIR at
+# run time and shadow image content, so data there would vanish). Test
+# (newstest2014) is deliberately NOT materialized — the agent must never reach
+# it; the external scorer holds it. Downloaded online here at build; the raw HF
+# cache (which does contain the test split) is then purged so only the
+# train+validation arrow survives in /opt. Runtime is offline (ENV below, set
+# AFTER this layer so the build-time download still works).
+USER root
+RUN mkdir -p /opt/mtbench && chown ${USER_UID}:${USER_GID} /opt/mtbench
+USER ${USER_UID}:${USER_GID}
+RUN /workspace/.venv/bin/python -c "\
+from datasets import load_dataset, DatasetDict; \
+ds = load_dataset('wmt/wmt14', 'de-en'); \
+keep = DatasetDict({'train': ds['train'], 'validation': ds['validation']}); \
+keep.save_to_disk('/opt/mtbench/wmt14'); \
+print('mtbench data rows:', {k: keep[k].num_rows for k in keep})" \
+ && rm -rf /home/${USERNAME}/.cache/huggingface
+
+# Offline runtime: no internet except the agent's own inference endpoint
+# (enforced host-side by run.sh's egress lock). Point the HF libraries at the
+# local baked dataset only and never phone home. HF_TOKEN is deliberately never
+# set — no gated/pretrained downloads. MTBENCH_DATA is where the agent reads
+# the corpus (datasets.load_from_disk), splits: train + validation(dev); no test.
+ENV HF_DATASETS_OFFLINE=1
+ENV TRANSFORMERS_OFFLINE=1
+ENV HF_HUB_OFFLINE=1
+ENV MTBENCH_DATA=/opt/mtbench/wmt14
 
 # Initialize workspace repo. Append project-specific ignores (checkpoints,
 # logs, tensorboard event files) to the .gitignore that uv init created,
