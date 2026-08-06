@@ -16,6 +16,26 @@ NET="${DOCKER_NETWORK:-mtbench-net}"
 NET_EXT="${NET}-ext"
 PROXY_NAME="${PROXY_NAME:-mtbench-proxy}"
 PROXY_PORT=8888
+STATE_DIR="${STATE_DIR:-$PWD/state}"
+BENCH_BUDGET_S="${BENCH_BUDGET_S:-43200}"   # 12h of ACTIVE compute time (not wall)
+TICK="${BENCH_TICK_S:-30}"                  # heartbeat granularity for the elapsed clock
+GRACE="${BENCH_KILL_GRACE:-120}"            # SIGINT->SIGKILL grace at the cap
+ELAPSED_FILE="$STATE_DIR/.bench_elapsed_s"
+DONE_FILE="$STATE_DIR/.bench_done"
+
+# Compute-time budget is fair under preemption: the run is complete only when it
+# has used BENCH_BUDGET_S of ACTIVE time (or the agent finished). If a prior
+# segment already marked done, or spent the budget, don't relaunch.
+if [ -f "$DONE_FILE" ]; then
+  echo "bench-egress: run already complete ($DONE_FILE) — not relaunching" >&2
+  exit 0
+fi
+elapsed=$(cat "$ELAPSED_FILE" 2>/dev/null || echo 0)
+if [ "$elapsed" -ge "$BENCH_BUDGET_S" ]; then
+  echo "bench-egress: compute budget spent (${elapsed}/${BENCH_BUDGET_S}s) — marking done" >&2
+  touch "$DONE_FILE"; exit 0
+fi
+remaining=$(( BENCH_BUDGET_S - elapsed ))
 
 # Pull the .env so AZURE_BASE_URL is visible for allowlist derivation (run.sh
 # parses it again for the container; here we only need the host).
@@ -47,23 +67,43 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Run the agent pinned to the internal net + proxy env, under the bench wall clock.
-# At the cap: SIGINT (lets the agent flush its deliverable), then SIGKILL after a
-# grace. The deliverable is durable regardless — /workspace is bind-mounted to
-# $STATE_DIR/workspace on the host, so whatever exists at stop time persists; the
-# agent is told to keep model/ + decode.sh current. No explicit snapshot needed.
+# Run the agent pinned to the internal net + proxy env, capped at the REMAINING
+# compute budget. A heartbeat persists elapsed active time every TICK; on a hard
+# preemption the whole launcher dies but the last heartbeat survives on the
+# durable STATE_DIR volume, so downtime costs nothing and the host-resume unit
+# continues from it. At the cap: SIGINT (agent flushes its deliverable) then
+# SIGKILL after grace. The deliverable is durable — /workspace is bind-mounted to
+# $STATE_DIR/workspace, so whatever exists at stop time persists.
 export IMAGE DOCKER_NETWORK="$NET"
 export HTTPS_PROXY="http://${PROXY_NAME}:${PROXY_PORT}"
 export HTTP_PROXY="$HTTPS_PROXY"
 export NO_PROXY="localhost,127.0.0.1"
-BENCH_WALL="${BENCH_WALL:-12h}"
-GRACE="${BENCH_KILL_GRACE:-120}"
 
-start="$(date -u +%FT%TZ)"
-echo "bench-egress: agent start $start, wall clock $BENCH_WALL (grace ${GRACE}s)" >&2
+echo "bench-egress: ${elapsed}/${BENCH_BUDGET_S}s active used, ${remaining}s remaining" >&2
+seg_start=$(date +%s)
+( while :; do
+    sleep "$TICK"
+    e=$(( elapsed + $(date +%s) - seg_start ))
+    [ "$e" -gt "$BENCH_BUDGET_S" ] && e=$BENCH_BUDGET_S
+    printf '%s' "$e" > "$ELAPSED_FILE.tmp" && mv "$ELAPSED_FILE.tmp" "$ELAPSED_FILE"
+  done ) &
+HB=$!
+
 rc=0
-timeout --signal=SIGINT --kill-after="${GRACE}" "$BENCH_WALL" ./run.sh "$@" || rc=$?
-end="$(date -u +%FT%TZ)"
-[ "$rc" = 124 ] && echo "bench-egress: WALL-CLOCK CAP hit at $BENCH_WALL" >&2
-echo "bench-egress: agent window $start -> $end (rc=$rc)" >&2
-echo "bench-egress: deliverable in \$STATE_DIR/workspace (model/ + decode.sh); score with bench/scorer/score.sh" >&2
+timeout --signal=SIGINT --kill-after="${GRACE}" "${remaining}" ./run.sh "$@" || rc=$?
+
+kill "$HB" 2>/dev/null || true
+elapsed=$(( elapsed + $(date +%s) - seg_start ))
+[ "$elapsed" -gt "$BENCH_BUDGET_S" ] && elapsed=$BENCH_BUDGET_S
+printf '%s' "$elapsed" > "$ELAPSED_FILE"
+
+# Done when: budget reached (rc=124 timeout, or elapsed>=budget) OR the agent
+# exited cleanly (rc=0 = finished/idle). A crash (other rc) leaves the run
+# resumable — the next launcher invocation continues from the persisted elapsed.
+if [ "$rc" = 124 ] || [ "$elapsed" -ge "$BENCH_BUDGET_S" ] || [ "$rc" = 0 ]; then
+  echo "bench-egress: run complete (rc=$rc, ${elapsed}/${BENCH_BUDGET_S}s active used)" >&2
+  touch "$DONE_FILE"
+else
+  echo "bench-egress: segment ended rc=$rc, ${elapsed}/${BENCH_BUDGET_S}s used — resume will continue" >&2
+fi
+echo "bench-egress: deliverable in $STATE_DIR/workspace (model/ + decode.sh); score with bench/scorer/score.sh" >&2

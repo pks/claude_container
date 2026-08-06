@@ -39,12 +39,22 @@ the implementation roadmap and the component→origin map.
 6. **from-scratch inspection** — DONE (advisory). `bench/scorer/check_from_scratch.py`
    scans the artifact for foreign-provenance markers (wired into score.sh, advisory).
    Real enforcement is the airgap: no pretrained weights in the image, none fetchable.
+7. **Preemptible-host support** — DONE. The bench MUST run on preemptible/spot GPUs,
+   so (a) the 12h is **compute-time, not wall-time**: `ops/bench-egress.sh` persists
+   active seconds to `$STATE_DIR/.bench_elapsed_s` via a heartbeat, caps at
+   `BENCH_BUDGET_S`, and preemption gaps don't count (verified: 4s active → gap →
+   resume → cap at budget); (b) a **generic auto-resume** (`ops/host-resume/`,
+   de-branded + hardened from the pilot's mithril unit) relaunches through
+   bench-egress after a reboot, so the egress lock + clock reapply. `.bench_done`
+   stops relaunch once the budget is spent or the agent finishes.
 
-## Strip (mithril spot machinery — irrelevant for on-demand bench)
+## Stripped vs kept (mithril → generic)
 
-`ops/mithril-watch.sh`, `ops/mithril-hook.sh`, `ops/mithril-nudge.txt`,
-`ops/mithril-host/*`, `pi-extensions/mithril/`, and their wiring in Dockerfile/run.sh.
-Bench runs on-demand (no preemption) by design.
+Removed the **mithril-SPECIFIC** machinery (`ops/mithril-*.sh`, `mithril-nudge.txt`,
+`pi-extensions/mithril/`, the `/opt/mithril` signal wiring) — a proprietary spot
+protocol. But preemption itself is NOT stripped: the hardened resume unit was
+**restored generically** as `ops/host-resume/` (#7 above), because the bench targets
+preemptible hosts. On-demand still works (no resume unit installed = single segment).
 
 ## Build order
 

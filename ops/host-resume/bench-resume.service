@@ -1,0 +1,28 @@
+[Unit]
+Description=Resume the MT-bench agent after a preemption reboot
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+# Soft deps only. No mount dep and NO WorkingDirectory= (or any *Directory=/
+# *Paths=): systemd auto-injects an implicit RequiresMountsFor= for such paths,
+# a HARD Requires+After on the mount that, when the volume's device times out on
+# a fresh boot, marks this oneshot "dependency failed" — and Type=oneshot has no
+# Restart, so it never fires again (this exact bug stranded pilot nodes for
+# hours). bench-resume.sh waits for the state volume + docker in-script instead,
+# so a late attach is recovered, not fatal. ExecStart is a copy in /usr/local/bin
+# (off any state/bind mount), so the unit can start before the volume attaches.
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=ubuntu
+Group=ubuntu
+Environment=TMUX_SESSION=mtbench
+# Host specifics (REPO, STATE_DIR, MOUNT, IMAGE, PROFILE, GPU, INFERENCE_ALLOWLIST):
+EnvironmentFile=-/etc/mtbench-resume.env
+ExecStart=/usr/local/bin/bench-resume.sh
+ExecStop=/usr/bin/tmux kill-session -t ${TMUX_SESSION}
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
