@@ -12,8 +12,7 @@ set -eu
 # instead: profile keys (retry/compaction) win; everything else is preserved.
 PI_SETTINGS_TARGET="${HOME:-/home/ubuntu}/.pi/agent/settings.json"
 PI_SETTINGS_SRC_DIR=/etc/pi-settings
-# Only run pi-settings profile selection when actually launching pi. Claude
-# Code runs don't need it, and the [entrypoint] log line is misleading then.
+# Only run pi-settings profile selection when actually launching pi.
 case "${1:-}" in
   pi|*/pi) RUN_PI_SETTINGS=1 ;;
   *)       RUN_PI_SETTINGS=0 ;;

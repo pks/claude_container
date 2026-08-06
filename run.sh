@@ -21,7 +21,7 @@ if [ -f "$STATE_DIR/.config" ]; then
   done < "$STATE_DIR/.config"
 fi
 
-PROFILE="${1:-${PROFILE:-${CONFIG_PROFILE:-claude}}}"
+PROFILE="${1:-${PROFILE:-${CONFIG_PROFILE:-pi-azure}}}"
 GPU="${2:-${GPU:-${CONFIG_GPU:-all}}}"
 # Reasoning effort. Empty here triggers per-profile defaults below. Override
 # with e.g. THINKING=high make run PROFILE=pi-azure.
@@ -104,23 +104,9 @@ MOUNTS=(
   -v "$STATE_DIR/home:$CONTAINER_HOME"
 )
 
-# Host Claude Code auth, layered over the home bind mount above.
-[ -f ~/.claude/.credentials.json ] \
-  && MOUNTS+=(-v ~/.claude/.credentials.json:"$CONTAINER_HOME/.claude/.credentials.json")
-[ -f ~/.claude.json ] \
-  && MOUNTS+=(-v ~/.claude.json:"$CONTAINER_HOME/.claude.json")
-
-ENVS=(
-  -e CLAUDE_CODE_THEME=dark
-  -e CLAUDE_CODE_ACCEPT_TOS=yes
-  -e CLAUDE_CODE_SKIP_TRUST_SCREEN=1
-)
-# Disable adaptive thinking by default so --effort is a hard level. Set
-# ADAPTIVE_THINKING=on (or any non-empty value) to leave it on — useful for
-# Fable 5 / Opus 4.8 where the model picks effort dynamically.
-if [ -z "${ADAPTIVE_THINKING:-}" ]; then
-  ENVS+=(-e CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=yes)
-fi
+# pi-only bench: the Claude Code CLI is dropped for reproducibility, so no claude
+# auth mounts and no CLAUDE_CODE_* env. Providers are configured per profile below.
+ENVS=()
 # Forward every variable declared in .env into the container — adding one
 # there auto-propagates without script changes. Names came from the safe
 # parser above; `-e VAR` (no value) tells docker to pull from our env.
@@ -138,23 +124,10 @@ for pv in HTTPS_PROXY HTTP_PROXY NO_PROXY https_proxy http_proxy no_proxy; do
   [ -n "${!pv:-}" ] && ENVS+=(-e "$pv=${!pv}")
 done
 
-# Per-profile session location and fresh-start prompt. The resume prompt is
-# shared across profiles; the fresh prompt runs the full caveman skill on every
-# profile (only the slash-command syntax differs: Claude Code /caveman, pi /skill:caveman).
-case "$PROFILE" in
-  claude)                                       SESSION_DIR=.claude/projects ;;
-  pi-ollama|pi-azure|pi-or|pi-gemini)           SESSION_DIR=.pi/agent/sessions ;;
-  *)                                            SESSION_DIR= ;;
-esac
-case "$PROFILE" in
-  # Use $'...' (ANSI-C quoting) so \n is a real newline. Claude Code needs
-  # the newline to separate the slash command from the user message; pi
-  # parses its /skill: invocations regardless of separator format but the
-  # real newline does no harm there either.
-  claude) FRESH_PROMPT=$'/caveman\ncarry out doc/PLAN.md' ;;
-  pi-or)  FRESH_PROMPT=$'/skill:caveman\ncarry out doc/PLAN.md' ;;
-  *)      FRESH_PROMPT=$'/skill:caveman\ncarry out doc/PLAN.md' ;;
-esac
+# pi session location (for resume detection) + fresh-start prompt. Caveman is
+# dropped for reproducibility — the agent gets a neutral instruction, no skill.
+SESSION_DIR=.pi/agent/sessions
+FRESH_PROMPT='carry out doc/PLAN.md'
 RESUME_PROMPT='Your prior session was interrupted (a manual exit or restart) and is now being resumed. /workspace and your prior session are bind-mounted from host-persistent storage, so they survived intact. Read /workspace/STATUS.md if present, check `git log` and the working-tree state, then continue carrying out doc/PLAN.md from where you left off.'
 
 RESUMING=0
@@ -164,23 +137,15 @@ RESUMING=0
 
 if [ "$RESUMING" = 1 ]; then
   echo "run.sh: resuming $PROFILE in $STATE_DIR (make reseed to start fresh)" >&2
-  CLAUDE_RESUME=(--continue)
   PI_RESUME=(-c)
   EFFECTIVE_PROMPT="$RESUME_PROMPT"
 else
   echo "run.sh: starting fresh $PROFILE in $STATE_DIR" >&2
-  CLAUDE_RESUME=()
   PI_RESUME=()
   EFFECTIVE_PROMPT="$FRESH_PROMPT"
 fi
 
 case "$PROFILE" in
-  claude)
-    ENTRYPOINT=claude
-    MODEL="${MODEL:-claude-opus-4-8}"
-    EFFECTIVE_THINKING="${THINKING:-max}"
-    ARGS=("${CLAUDE_RESUME[@]}" --dangerously-skip-permissions --model "$MODEL" --effort "$EFFECTIVE_THINKING" "$EFFECTIVE_PROMPT")
-    ;;
   pi-ollama)
     ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
     MODEL=qwen3.6:35b
@@ -248,7 +213,7 @@ case "$PROFILE" in
     ARGS=()
     ;;
   *)
-    echo "usage: $0 {claude|pi-ollama|pi-azure|pi-gemini|pi-or|bash} [gpu-id|all]" >&2
+    echo "usage: $0 {pi-azure|pi-ollama|pi-gemini|pi-or|bash} [gpu-id|all]" >&2
     exit 1
     ;;
 esac

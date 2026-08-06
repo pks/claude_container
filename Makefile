@@ -5,7 +5,7 @@ IMAGE     ?= mtbench-container
 STATE_DIR ?= $(CURDIR)/state
 # PROFILE / GPU / THINKING default to empty so run.sh can fall through to
 # $(STATE_DIR)/.config — set them on first `make run` for a fresh state-dir
-# and they'll be remembered. Bare `make run` on a fresh dir picks "claude"
+# and they'll be remembered. Bare `make run` on a fresh dir picks "pi-azure"
 # / "all" via run.sh's own fallback chain.
 PROFILE   ?=
 GPU       ?=
@@ -92,4 +92,4 @@ smoke: image
 		-v "$(STATE_DIR)/home:/home/$(USERNAME)" \
 		--entrypoint /usr/local/bin/entrypoint.sh \
 		$(IMAGE) \
-		bash -c 'set -e; echo "[smoke] pwd=$$(pwd)"; uv --version; node --version; pi --version >/dev/null && echo "[smoke] pi OK"; claude --version >/dev/null && echo "[smoke] claude OK"; echo "[smoke] all OK"'
+		bash -c 'set -e; echo "[smoke] pwd=$$(pwd)"; uv --version; node --version; pi --version >/dev/null && echo "[smoke] pi OK"; echo "[smoke] all OK"'

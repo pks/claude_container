@@ -39,7 +39,7 @@ RUN if [ "${USERNAME}" != "ubuntu" ]; then \
  && if [ "${USER_UID}" != "$(id -u ${USERNAME})" ]; then usermod -u ${USER_UID} ${USERNAME}; fi \
  && echo "${USERNAME} ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/${USERNAME} \
  && chmod 0440 /etc/sudoers.d/${USERNAME} \
- && mkdir -p /workspace /home/${USERNAME}/.claude /home/${USERNAME}/.pi/agent \
+ && mkdir -p /workspace /home/${USERNAME}/.pi/agent \
  && chown -R ${USER_UID}:${USER_GID} /workspace /home/${USERNAME}
 
 WORKDIR /workspace
@@ -56,9 +56,9 @@ ENV LD_LIBRARY_PATH="$CUDA_HOME/lib64"
 RUN git config --global user.email "${USERNAME}@localhost" \
  && git config --global user.name "${USERNAME}"
 
-# Claude Code + uv
-RUN curl -4fsSL --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 https://claude.ai/install.sh | bash \
- && curl -4LsSf --retry 100 --retry-all-errors --retry-delay 2 --retry-max-time 600 https://astral.sh/uv/install.sh | sh
+# uv (the Claude Code CLI is intentionally NOT installed — the bench is pi-only
+# for reproducibility).
+RUN curl -4LsSf --retry 100 --retry-all-errors --retry-delay 2 --retry-max-time 600 https://astral.sh/uv/install.sh | sh
 
 # Python environment — uv init in one layer, deps in the next so changing a
 # dep version doesn't invalidate the project scaffold. `--no-package`: plain
@@ -127,15 +127,11 @@ RUN rm -f main.py \
  && git add * .python-version .gitignore \
  && git commit -m init
 
-# Claude plugins + pi-coding-agent + caveman skill. Plugin enable state is
-# declared in ops/claude-settings.json (copied near the end of this file) —
-# install fetches the plugin code, settings.json wires up the enable.
-RUN claude plugin marketplace add JuliusBrussee/caveman \
- && claude plugin install caveman@caveman \
- && curl -4 --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
+# pi-coding-agent (the only agent — no Claude Code, no caveman skill, for
+# reproducibility). nvm provides node for the npm-global pi install.
+RUN curl -4 --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
  && npm config set prefix '~/.npm-global' \
- && npm install -g @earendil-works/pi-coding-agent@0.82.1 \
- && npx skills add JuliusBrussee/caveman --yes
+ && npm install -g @earendil-works/pi-coding-agent@0.82.1
 
 # Tools
 RUN mkdir -p tools \
@@ -183,4 +179,3 @@ COPY ops/proxy/proxy-entrypoint.sh /usr/local/bin/proxy-entrypoint.sh
 COPY ops/proxy/tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
 RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/proxy-entrypoint.sh
 USER ${USER_UID}:${USER_GID}
-COPY --chown=${USER_UID}:${USER_GID} ops/claude-settings.json /home/${USERNAME}/.claude/settings.json
