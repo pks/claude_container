@@ -19,8 +19,12 @@ the implementation roadmap and the component→origin map.
 
 ## New / changed (the bench-specific work)
 
-1. **Egress lock** — replace `--network host` with a locked network: deny-all except
-   the inference endpoint. DECISION PENDING: nftables/iptables rules vs egress proxy.
+1. **Egress lock** — DONE. Allowlist proxy, fail-closed: agent runs on an
+   `--internal` docker network (no route out) whose only peer is a tinyproxy sidecar
+   (same image, proxy entrypoint) that default-denies every destination except the
+   inference host(s). `ops/bench-egress.sh` orchestrates net+proxy then hands to
+   run.sh; run.sh honors `DOCKER_NETWORK` + forwards proxy env. Even if a client
+   ignores the proxy env, the internal net has no egress → fails closed, no leak.
 2. **Offline data bake** — Dockerfile layer: WMT14 train+dev(refs) cached in image,
    `HF_DATASETS_OFFLINE=1`/`TRANSFORMERS_OFFLINE=1`, drop `HF_TOKEN`. **Test data NOT
    in image.**

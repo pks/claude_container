@@ -11,6 +11,7 @@ RUN apt update && apt upgrade -y && apt dist-upgrade -y \
  && apt install -y --no-install-recommends \
       ca-certificates curl less git procps sudo unzip gnupg2 gh jq \
       cmake g++ make ripgrep fd-find python3.12-dev ninja-build python-is-python3 \
+      tinyproxy \
  && curl -4fsSL --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 https://deb.nodesource.com/setup_24.x | bash - \
  && apt install -y nodejs \
  && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
@@ -174,8 +175,12 @@ RUN pi install /tmp/pi-extensions/azure-anthropic \
 
 # Entrypoint wrapper (pi settings-profile selection + `exec "$@"`). The bench
 # runs on-demand with no preemption, so no spot-interruption watcher/hook.
+# Also bake the egress-proxy config + entrypoint: the SAME image runs a second
+# container in proxy mode (ops/bench-egress.sh) as the agent's only route out.
 USER root
 COPY ops/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod 0755 /usr/local/bin/entrypoint.sh
+COPY ops/proxy/proxy-entrypoint.sh /usr/local/bin/proxy-entrypoint.sh
+COPY ops/proxy/tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
+RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/proxy-entrypoint.sh
 USER ${USER_UID}:${USER_GID}
 COPY --chown=${USER_UID}:${USER_GID} ops/claude-settings.json /home/${USERNAME}/.claude/settings.json

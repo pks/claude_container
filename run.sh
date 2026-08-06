@@ -130,6 +130,14 @@ if [ "${#ENV_NAMES_FROM_FILE[@]}" -gt 0 ]; then
   done
 fi
 
+# Bench egress lock: forward proxy vars so the agent's outbound HTTP(S) routes
+# through the allowlist proxy (set by ops/bench-egress.sh). On the --internal
+# bench network the proxy is the only route out, so this fails closed — a client
+# that ignores the proxy reaches nothing rather than leaking. No-op off the bench.
+for pv in HTTPS_PROXY HTTP_PROXY NO_PROXY https_proxy http_proxy no_proxy; do
+  [ -n "${!pv:-}" ] && ENVS+=(-e "$pv=${!pv}")
+done
+
 # Per-profile session location and fresh-start prompt. The resume prompt is
 # shared across profiles; the fresh prompt runs the full caveman skill on every
 # profile (only the slash-command syntax differs: Claude Code /caveman, pi /skill:caveman).
@@ -289,7 +297,7 @@ exec docker run \
   -it \
   --rm \
   "${GPU_FLAG[@]}" \
-  --network host \
+  --network "${DOCKER_NETWORK:-host}" \
   -u "$(id -u):$(id -g)" \
   -w /workspace \
   --entrypoint /usr/local/bin/entrypoint.sh \
