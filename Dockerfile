@@ -113,9 +113,9 @@ from datasets import load_from_disk; \
 d = load_from_disk('/opt/mtbench/wmt14'); \
 assert set(d.keys()) == {'train', 'validation'}, ('unexpected splits', d.keys()); \
 print('assert OK: baked splits', sorted(d.keys()))" \
- && if find /home /opt -iname '*newstest2014*' -print 2>/dev/null | grep -q .; then \
-      echo 'FATAL: newstest2014 (test) data present in image — build aborted' >&2; exit 1; \
-    else echo 'assert OK: no test-named files under /home or /opt'; fi
+ && if find /home /opt -type f \( -iname '*wmt14-test*' -o -iname 'test-*.arrow' -o -iname '*-test.arrow' -o -iname '*newstest2014*' \) -print 2>/dev/null | grep -q .; then \
+      echo 'FATAL: a test-split arrow survived into the image — build aborted' >&2; exit 1; \
+    else echo 'assert OK: no test-split file under /home or /opt'; fi
 
 # Offline runtime: no internet except the agent's own inference endpoint
 # (enforced host-side by run.sh's egress lock). Point the HF libraries at the

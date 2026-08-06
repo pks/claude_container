@@ -52,9 +52,25 @@ The scorer mounts ONLY `submission/` (10 GB cap on the whole dir), runs `decode.
 locked down (`--network none`, non-root, caps dropped, tmpfs scratch), and draws
 canaries from real dev source so they're indistinguishable from test.
 
-## Runtime-verify TODO (needs a docker + GPU host)
+## Runtime verification (done on a docker + GPU host, 2026-08-06)
 
-1. `make image` builds; `load_dataset('wmt/wmt14','de-en')` resolves (datasets 4.8.5).
-2. Agent honors `HTTPS_PROXY`, else fail-closed holds — preflight egress test.
-3. `--network none --gpus` decode of a real artifact end-to-end through the scorer.
-4. A preempt → reboot → `host-resume` → clock-continues cycle.
+1. ✅ **Data resolve + test-exclusion** — `load_dataset('wmt/wmt14','de-en')` resolves
+   under datasets 4.8.5 with **no `trust_remote_code`**; `save_to_disk` keeps
+   train(4,508,785)+validation(3,000), test excluded (structural). Caught + fixed a
+   real bug: HF names the test file `wmt14-test.arrow`, not `newstest2014`, so the
+   build assertion's pattern was useless — corrected + verified (passes clean, catches
+   a stray `wmt14-test.arrow`).
+2. ✅ **Egress fail-closed** — from an `--internal` network the real image gets **no
+   internet and no DNS** (`BLOCKED` / `NO-DNS`), so a client ignoring the proxy leaks
+   nothing. (tinyproxy allowlist *forwarding* still wants a check on the built image;
+   fail-closed is the guarantee regardless.)
+3. ✅ **Scorer end-to-end through docker** — full pipeline (dev-sourced canaries →
+   shuffle → locked `--network none` decode → strip → sacreBLEU, correct signature),
+   void on wrong line count, and the **HIGH isolation fix confirmed**: decode could not
+   read a file outside `submission/`.
+4. ✅ **Compute-clock + resume** — clock fairness (active-only, preemption gap free,
+   caps at budget) proven in isolation; auto-resume guards (skip on `.bench_done`,
+   skip on live agent container, proxy excluded) verified.
+
+Remaining (need a full 12 h run / built image, not blockers): a real-model GPU decode,
+and tinyproxy allowlist forwarding on the built `mtbench-container`.

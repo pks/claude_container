@@ -69,11 +69,14 @@ preemptible hosts. On-demand still works (no resume unit installed = single segm
    HOST-bench now live in-branch (self-contained). End-to-end smoke still needs a
    docker+GPU host (see README "Runtime-verify TODO").
 
-## Status: v0 complete (modulo GPU-host verification)
+## Status: v0 complete + runtime-verified (2026-08-06)
 
-All 7 pieces built + committed on `bench`. Verified in isolation (scorer plumbing,
-canaries, compute-clock fairness, shells). Not yet run on a real docker+GPU host —
-those are the 4 runtime-verify TODOs in bench/README.md.
+All 7 pieces built + committed on `bench`. Runtime-verified on a docker+GPU host
+(see bench/README.md "Runtime verification"): data resolves + test-exclusion assert
+(fixed a real wrong-pattern bug), egress fail-closed (no net/DNS on --internal),
+scorer end-to-end through docker + HIGH isolation confirmed, compute-clock + resume
+guards. Residuals (not blockers): real-model GPU decode + tinyproxy forwarding on the
+built image, both need a full run.
 
 ## Invariants
 
