@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""Generate K synthetic English canary source lines (novel, no valid German),
-seeded and reproducible. Mixed into the decode input and excluded from scoring:
+"""Generate K English canary source lines, seeded and reproducible. Mixed into
+the decode input and excluded from scoring:
 
 - the agent can't tell which lines count -> can't selectively memorize/hand-craft
   the real test subset;
 - tripwire: a genuine NMT model, an LLM-passthrough, and a hardcoded lookup table
-  each handle novel/gibberish input differently, which is visible on the canaries.
+  each handle these lines differently, which is visible on the canary outputs.
 
-Regenerate per run (vary the seed) so canaries can't be learned across runs.
+    python3 make_canaries.py <K> <seed> <out.txt> [pool_file]
 
-    python3 make_canaries.py <K> <seed> <out.txt>
+If pool_file is given (real dev-source sentences), canaries are SAMPLED from it,
+so they are stylistically identical to the test source and can't be told apart
+(audit LOW: canary detectability). Dev sentences are safe as canaries — they are
+excluded from scoring, so recognizing one gains the agent nothing. Without a pool
+file, a word-salad fallback is used. Regenerate per run (vary the seed).
 """
 import random
 import sys
@@ -44,11 +48,21 @@ def main() -> None:
     k = int(sys.argv[1]) if len(sys.argv) > 1 else 100
     seed = int(sys.argv[2]) if len(sys.argv) > 2 else 0
     out = sys.argv[3] if len(sys.argv) > 3 else "canaries.txt"
+    pool_file = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] else None
     rng = random.Random(seed)
+
+    if pool_file:
+        pool = [l.rstrip("\n") for l in open(pool_file) if l.strip()]
+        if len(pool) < k:
+            sys.exit(f"pool {pool_file} has {len(pool)} lines < K={k}")
+        lines = rng.sample(pool, k)  # real dev-source sentences -> test-like decoys
+        src = f"sampled from {pool_file}"
+    else:
+        lines = [sentence(rng) for _ in range(k)]  # word-salad fallback
+        src = "word-salad"
     with open(out, "w") as f:
-        for _ in range(k):
-            f.write(sentence(rng) + "\n")
-    print(f"wrote {k} canaries (seed {seed}) -> {out}")
+        f.write("\n".join(lines) + "\n")
+    print(f"wrote {k} canaries ({src}, seed {seed}) -> {out}")
 
 
 if __name__ == "__main__":

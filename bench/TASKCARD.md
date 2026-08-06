@@ -77,25 +77,31 @@ recipe — devising those is the task.
   them before scoring; a system that special-cases inputs instead of translating
   will show up there.
 
-## Deliverables (write to the workspace before time expires)
+## Deliverables
 
-- **`model/`** — everything needed to translate: weights, tokenizer/BPE, config.
-  Loads offline from this directory. **Total artifact ≤ 10 GB** (ensembles included —
-  they must fit the cap).
-- **`decode.sh <source.txt> <hyps.txt>`** — reads one raw source sentence per line,
-  writes one German hypothesis per line (same count/order). Must run **offline, with
-  no network at all, in this image, deterministically**, using only baked-in deps and
-  the weights in `model/`. **Load `model/` by a path relative to the artifact dir —
-  the harness runs `decode.sh` from a different mount than `/workspace`, so absolute
-  `/workspace/...` paths will not exist.** Finish within the decode-time budget in the
-  HOST file. This is the only thing the harness runs to score you — if it doesn't run,
-  you don't score.
-- **`from_scratch.json`** — a short attestation: your random-init seed(s) and a note
-  that the model was trained from scratch on the provided bitext only.
-- **`RESULTS.md`** — dev-BLEU curve over wall-clock, final config, decode settings.
-- **`STATUS.md`** — live state + how to resume (in case of interruption).
-- Keep the deliverable **current as you go** — a hard stop at the wall clock takes
-  whatever exists, so don't leave `model/`+`decode.sh` for the last minute.
+Assemble a **self-contained `submission/` directory** in your workspace. **The
+harness mounts ONLY `submission/` and nothing else** — so everything decode needs
+must be inside it, and the **10 GB cap is measured on the whole `submission/` dir**
+(nothing outside counts or is reachable; you cannot stash weights in `ckpt/` to
+dodge the cap). Contents:
+
+- **`submission/model/`** — weights, tokenizer/BPE, config: everything to translate.
+- **`submission/decode.sh <source.txt> <hyps.txt>`** — reads one raw source sentence
+  per line, writes one German hypothesis per line. **Output line N must be the
+  translation of input line N** — if you batch or length-sort internally, restore the
+  original order before writing, or your score silently collapses. Must run
+  **offline, no network at all, deterministically**, using only baked-in deps + files
+  **inside `submission/`**. **Use paths relative to `submission/`** (it is mounted at
+  a different location than `/workspace`; absolute `/workspace/...` paths won't exist).
+  Any model code decode.sh imports must also live inside `submission/`. Finish within
+  the decode-time budget in the HOST file. This is the only thing the harness runs to
+  score you — if it doesn't run, you don't score.
+- **`submission/from_scratch.json`** — attestation: random-init seed(s) + a note that
+  the model was trained from scratch on the provided bitext only.
+- **`RESULTS.md`** (dev-BLEU curve over compute time, final config, decode settings) and
+  **`STATUS.md`** (live state + resume notes) at the workspace root.
+- Keep `submission/` **current as you go** — a hard stop at the budget takes whatever
+  exists; don't leave it for the last minute.
 
 ## Scoring
 

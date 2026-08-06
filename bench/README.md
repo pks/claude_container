@@ -44,10 +44,13 @@ Preemptible hosts: `sudo bash ops/host-resume/install.sh` (after editing
 
 ```
 cd bench/scorer
-python3 prepare_test.py testdata/           # ONCE, online: newstest2014 -> testdata/ (host-only)
-IMAGE=mtbench-container SEED=<seed> DECODE_BUDGET=3600 ./score.sh <state>/workspace
+python3 prepare_test.py testdata/           # ONCE, online: newstest2014 + dev.src -> testdata/ (host-only)
+IMAGE=mtbench-container SEED=<seed> DECODE_BUDGET=3600 ./score.sh <state>/workspace/submission
 ```
-→ `result.json`: `test_bleu`, `sacrebleu_sig`, decode time, artifact bytes, canary check.
+→ `result.json`: `test_bleu`, `sacrebleu_sig`, decode time, submission bytes, canary check.
+The scorer mounts ONLY `submission/` (10 GB cap on the whole dir), runs `decode.sh`
+locked down (`--network none`, non-root, caps dropped, tmpfs scratch), and draws
+canaries from real dev source so they're indistinguishable from test.
 
 ## Runtime-verify TODO (needs a docker + GPU host)
 

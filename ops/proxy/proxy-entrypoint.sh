@@ -14,7 +14,10 @@ for h in "${HOSTS[@]}"; do
   h="$(echo "$h" | xargs)"        # trim whitespace
   [ -z "$h" ] && continue
   esc="$(printf '%s' "$h" | sed 's/[.]/\\./g')"   # escape dots
-  printf '^%s$\n' "$esc" >> "$ALLOWLIST"          # anchor to exact host
+  # anchor to the exact host, allowing an optional :port (tinyproxy may present
+  # the CONNECT target as host:443, which a bare $-anchor would reject → the
+  # inference endpoint would be blocked; fail-closed but the run dies). audit MED.
+  printf '^%s(:[0-9]+)?$\n' "$esc" >> "$ALLOWLIST"
 done
 
 echo "[proxy] egress allowlist (default-deny for all others):" >&2

@@ -19,20 +19,21 @@ Keep `testdata/` only here. It must never be copied into the agent image.
 
 ```
 IMAGE=mtbench-container SEED=<run_seed> K=100 DECODE_BUDGET=3600 \
-  ./score.sh /path/to/artifact
+  ./score.sh <state>/workspace/submission
 ```
-`artifact/` = the agent's deliverable: `model/` (≤10 GB) + executable `decode.sh`.
+`submission/` = the agent's self-contained deliverable: `decode.sh` + `model/` +
+any code decode needs. Only this dir is mounted; the 10 GB cap is on the whole dir.
 
 Flow:
-1. pre-checks — `decode.sh` executable, `model/` present, `du(model) ≤ 10 GB` (else void).
-2. `make_canaries.py` → K synthetic EN lines (seeded).
+1. pre-checks — `decode.sh` executable, `model/` present, `du(submission) ≤ 10 GB` (else void).
+2. `make_canaries.py` → K canary lines (sampled from real dev.src when present, else word-salad).
 3. `build_input.py` → shuffle test.src + canaries into `decode_input.txt` + record `perm.json`.
-4. `docker run --network none --gpus all -w /art IMAGE timeout $DECODE_BUDGET ./decode.sh /work/decode_input.txt /work/out.hyp`
-   — **no network at all** (decode must be self-contained), time-bounded; non-zero exit or wrong line count = void.
+4. `docker run --network none --gpus all --user … --cap-drop ALL … -v submission:/art:ro -w /art IMAGE timeout $DECODE_BUDGET ./decode.sh /work/decode_input.txt /work/out.hyp`
+   — no network, dropped privileges, only `submission/` mounted; non-zero exit or wrong line count = void.
 5. `score.py` — un-permute, strip canaries, sacreBLEU (`nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp`).
 
 Output `result.json`: `test_bleu`, `sacrebleu_sig`, `n_test`, `n_canary`,
-`canary_nonempty`, `decode_seconds`, `artifact_bytes`. That is the single read.
+`canary_nonempty`, `decode_seconds`, `submission_bytes`. That is the single read.
 
 ## Why this is the anti-cheat core
 

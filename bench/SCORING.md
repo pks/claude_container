@@ -37,17 +37,20 @@ test data out of the agent container is what actually protects the read.
 
 ## Submission → scoring flow
 
-1. At 12 h (or on early "submit"), the harness freezes the workspace and takes the
-   deliverable: `model/` + `decode.sh` + `RESULTS.md` + `STATUS.md`.
+1. At the budget (or on early "submit"), the harness takes the agent's
+   **`submission/`** dir (self-contained: `decode.sh` + `model/` + any code).
 2. **Pre-checks (any failure → void or flagged):**
-   - `du -sb model/` ≤ **10 GB**.
-   - from-scratch: no pretrained weights (see Integrity checks).
-   - `decode.sh` present and executable.
+   - `du -sb submission/` ≤ **10 GB** — the cap is on the WHOLE submission dir, and
+     only `submission/` is mounted (below), so weights can't hide outside it.
+   - `decode.sh` present + executable; `model/` present.
+   - from-scratch: advisory provenance scan (see Integrity checks).
 3. **Build the decode input:** take the withheld test **source** (N lines), inject
-   **K synthetic canary lines** at known positions, shuffle-with-recorded-permutation
+   **K canary lines** at known positions, shuffle-with-recorded-permutation
    → `decode_input.txt` (N+K lines). The agent's `decode.sh` sees only this.
-4. **Run the artifact, offline, in a fresh copy of the same image**, no network at
-   all (not even the inference endpoint — decode must be self-contained):
+4. **Run the submission, locked down**, in a fresh copy of the same image, mounting
+   ONLY `submission/` (ro) + a tmpfs scratch, with **no network at all**, dropped
+   privileges (`--user` non-root, `--cap-drop ALL`, `--security-opt no-new-privileges`,
+   `--pids-limit`), GPU on, time-bounded:
    `timeout <DECODE_BUDGET> ./decode.sh decode_input.txt out.hyp`
    Record decode wall-time. Non-zero exit / timeout / wrong line count → void.
 5. **Un-permute, strip the K canaries**, leaving N hypotheses aligned to the test
@@ -60,13 +63,15 @@ There is no second submission. The read is the harness's, not the agent's.
 
 ## Canaries
 
-- K synthetic source lines (e.g. 50–200) mixed into the decode input, excluded from
-  scoring. Purpose: (a) the agent cannot tell which lines count, defeating selective
+- K source lines (e.g. 50–200) mixed into the decode input, excluded from scoring.
+  Purpose: (a) the agent cannot tell which lines count, defeating selective
   memorization / hand-crafting of the real subset; (b) a tripwire — a genuine NMT
-  model, an LLM-passthrough, and a hardcoded lookup table each handle novel/gibberish
-  input differently, which is detectable on the canary outputs.
-- Construction: plausible-but-novel EN sentences the agent's model has never seen and
-  which have no "correct" DE (scrambled/recombined vocab, nonce entities). Regenerate
+  model, an LLM-passthrough, and a hardcoded lookup table each handle them
+  differently, which is detectable on the canary outputs.
+- Construction: **sampled from real dev source** (newstest2013 English) so canaries
+  are stylistically identical to the test source and can't be told apart (audit LOW).
+  Dev lines are safe as canaries — they're excluded from scoring, so recognizing one
+  gains the agent nothing. Fallback (no dev pool): word-salad EN. Regenerate
   per run so they can't be learned across runs.
 
 ## Integrity checks
@@ -75,8 +80,9 @@ There is no second submission. The read is the harness's, not the agent's.
   egress block already prevents downloading weights, and the 10 GB cap + canary
   behavior catch a smuggled model or lookup table. Optionally require the agent to
   log its random-init step and make the artifact reproducible from the logged seed.
-- **Artifact-only decode:** step 4 runs with **no network at all** and only `model/`
-  + baked deps — a `decode.sh` that tries to phone home or call an LLM API fails.
+- **Submission-only decode:** step 4 runs with **no network at all**, mounting only
+  `submission/` (ro) + baked deps + a tmpfs — a `decode.sh` that phones home / calls
+  an LLM API fails, and nothing outside `submission/` (ckpt/, .venv, logs) is reachable.
 - **Self-report ignored:** any test number the agent writes in `RESULTS.md` is not
   used; a gap vs the harness score is a flag.
 - **Determinism:** decode should be deterministic; the harness may run it twice and

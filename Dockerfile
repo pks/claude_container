@@ -97,13 +97,25 @@ RUN uv add \
 USER root
 RUN mkdir -p /opt/mtbench && chown ${USER_UID}:${USER_GID} /opt/mtbench
 USER ${USER_UID}:${USER_GID}
-RUN /workspace/.venv/bin/python -c "\
+# Pin the HF cache to a build-only path so the purge is deterministic (default
+# would be $HOME/.cache, under /home, which gets seeded to STATE_DIR). Then ASSERT
+# test-exclusion (audit MED): the saved dataset has exactly train+validation, and
+# no test-named file survives anywhere the agent can reach (/opt image + /home seed).
+RUN HF_HOME=/tmp/hfbuild HF_DATASETS_CACHE=/tmp/hfbuild/ds /workspace/.venv/bin/python -c "\
 from datasets import load_dataset, DatasetDict; \
 ds = load_dataset('wmt/wmt14', 'de-en'); \
 keep = DatasetDict({'train': ds['train'], 'validation': ds['validation']}); \
 keep.save_to_disk('/opt/mtbench/wmt14'); \
 print('mtbench data rows:', {k: keep[k].num_rows for k in keep})" \
- && rm -rf /home/${USERNAME}/.cache/huggingface
+ && rm -rf /tmp/hfbuild /home/${USERNAME}/.cache/huggingface \
+ && /workspace/.venv/bin/python -c "\
+from datasets import load_from_disk; \
+d = load_from_disk('/opt/mtbench/wmt14'); \
+assert set(d.keys()) == {'train', 'validation'}, ('unexpected splits', d.keys()); \
+print('assert OK: baked splits', sorted(d.keys()))" \
+ && if find /home /opt -iname '*newstest2014*' -print 2>/dev/null | grep -q .; then \
+      echo 'FATAL: newstest2014 (test) data present in image — build aborted' >&2; exit 1; \
+    else echo 'assert OK: no test-named files under /home or /opt'; fi
 
 # Offline runtime: no internet except the agent's own inference endpoint
 # (enforced host-side by run.sh's egress lock). Point the HF libraries at the
