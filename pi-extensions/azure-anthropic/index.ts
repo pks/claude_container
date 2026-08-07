@@ -1,18 +1,29 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { installAzureRetryFetch } from "../_shared/retry-fetch.js";
 
-function upgradeCacheTtlInPlace(value: unknown): void {
+// Cache TTL for every ephemeral marker. Default "1h": these runs interleave
+// long training/eval bash (5–60min) and human idle between turns, so reuse
+// gaps routinely exceed the 5-min window; 1h keeps the prefix warm across them
+// (write $10/M vs $6.25/M for 5-min, break-even ~1.6 reads — easily met on
+// multi-turn sessions). Set AZURE_CACHE_TTL=5m for a purely back-to-back
+// workload with no long tool waits to shed the write premium. Anthropic only
+// accepts "5m" | "1h"; anything else falls back to "1h".
+function resolveCacheTtl(): "5m" | "1h" {
+  return process.env.AZURE_CACHE_TTL === "5m" ? "5m" : "1h";
+}
+
+function upgradeCacheTtlInPlace(value: unknown, ttl: "5m" | "1h"): void {
   if (Array.isArray(value)) {
-    for (const item of value) upgradeCacheTtlInPlace(item);
+    for (const item of value) upgradeCacheTtlInPlace(item, ttl);
     return;
   }
   if (value && typeof value === "object") {
     const obj = value as Record<string, unknown>;
     if (obj.type === "ephemeral") {
-      obj.ttl = "1h";
+      obj.ttl = ttl;
       return;
     }
-    for (const v of Object.values(obj)) upgradeCacheTtlInPlace(v);
+    for (const v of Object.values(obj)) upgradeCacheTtlInPlace(v, ttl);
   }
 }
 
@@ -38,13 +49,13 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // Upgrade every cache_control: { type: "ephemeral" } to ttl: "1h" so cached
-  // prefixes survive long pauses between turns. 1h writes cost $10/M vs $6.25/M
-  // for 5-min, but break-even is ~1.6 reads — easily met on multi-turn sessions.
-  // Mutates event.payload in place so this works regardless of whether the hook
-  // API uses the return value.
+  // Upgrade every cache_control: { type: "ephemeral" } to the resolved ttl so
+  // cached prefixes survive long pauses between turns. Resolve once at register
+  // time (env is fixed for the run). Mutates event.payload in place so this
+  // works regardless of whether the hook API uses the return value.
+  const ttl = resolveCacheTtl();
   pi.on("before_provider_request", (event) => {
-    upgradeCacheTtlInPlace(event.payload);
+    upgradeCacheTtlInPlace(event.payload, ttl);
   });
 
   installAzureRetryFetch(base);
