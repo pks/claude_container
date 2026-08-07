@@ -94,7 +94,13 @@ seg_start=$(date +%s)
 HB=$!
 
 rc=0
-timeout --signal=SIGINT --kill-after="${GRACE}" "${remaining}" ./run.sh "$@" || rc=$?
+# --foreground is REQUIRED: without it timeout puts run.sh in a NEW process group,
+# so `docker run -it` is no longer the terminal's foreground process and pi's
+# interactive TUI can't own the TTY — it renders only to the container pty
+# (visible via docker logs) and its input loop stalls after the first turn
+# (observed on both nodes 2026-08-06). --foreground keeps run.sh in the terminal's
+# foreground group so the TTY passes through; the time limit still fires.
+timeout --foreground --signal=SIGINT --kill-after="${GRACE}" "${remaining}" ./run.sh "$@" || rc=$?
 
 kill "$HB" 2>/dev/null || true
 elapsed=$(( elapsed + $(date +%s) - seg_start ))
