@@ -266,6 +266,7 @@ exec docker run \
   -it \
   --rm \
   "${GPU_FLAG[@]}" \
+  --shm-size="${SHM_SIZE:-8g}" \
   --network "${DOCKER_NETWORK:-host}" \
   -u "$(id -u):$(id -g)" \
   -w /workspace \
