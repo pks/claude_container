@@ -82,6 +82,9 @@ RUN uv add \
       'datasets==4.8.5' \
       'sacrebleu==2.6.0' \
       'sentencepiece==0.2.1' \
+      'sacremoses==0.1.1' \
+      'tokenizers==0.23.1' \
+      'einops==0.8.2' \
       'tensorboard==2.20.0' \
       'tbparse==0.0.9'
 # NB: no unbabel-comet / CometKiwi here — the bench forbids pretrained models
