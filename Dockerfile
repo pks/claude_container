@@ -9,7 +9,7 @@ ARG CUDA_VERSION=cu130
 # System packages
 RUN apt update && apt upgrade -y && apt dist-upgrade -y \
  && apt install -y --no-install-recommends \
-      ca-certificates curl less git procps unzip gnupg2 gh jq \
+      ca-certificates curl less git procps unzip gnupg2 jq \
       cmake g++ make ripgrep fd-find python3.12-dev ninja-build python-is-python3 \
       tinyproxy \
  && curl -4fsSL --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 https://deb.nodesource.com/setup_24.x | bash - \
@@ -82,8 +82,7 @@ RUN uv add \
       'datasets==4.8.5' \
       'sacrebleu==2.6.0' \
       'sentencepiece==0.2.1' \
-      'tensorboard==2.20.0' \
-      'tbparse==0.0.9'
+      'tensorboard==2.20.0'
 # NB: no unbabel-comet / CometKiwi here — the bench forbids pretrained models
 # (incl. as a data-selection filter), and offline runtime can't fetch it anyway.
 # COMET as a scoring metric lives in the external scorer, not the agent image.
@@ -146,13 +145,6 @@ RUN rm -f main.py \
 RUN curl -4 --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
  && npm config set prefix '~/.npm-global' \
  && npm install -g @earendil-works/pi-coding-agent@0.84.1
-
-# Tools
-RUN mkdir -p tools \
- && git clone https://github.com/clab/fast_align.git tools/fast_align \
- && mkdir -p tools/fast_align/build \
- && cd tools/fast_align/build && cmake .. && make -j$(nproc)
-ENV PATH="$PATH:/workspace/tools/fast_align/build"
 
 # Put the project venv first on PATH so bare `python`/`pip` resolve to the
 # torch-equipped interpreter. The container ships no unversioned `python`
