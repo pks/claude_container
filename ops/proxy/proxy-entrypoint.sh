@@ -7,7 +7,10 @@ set -euo pipefail
 
 : "${INFERENCE_ALLOWLIST:?set INFERENCE_ALLOWLIST to comma-separated allowed hostnames}"
 
-ALLOWLIST=/etc/tinyproxy/allowlist
+# /tmp (world-writable) so the proxy can run as the unprivileged image user —
+# /etc/tinyproxy is root-owned and the image drops sudo/root. tinyproxy.conf's
+# Filter points here.
+ALLOWLIST=/tmp/mtbench-allowlist
 : > "$ALLOWLIST"
 IFS=',' read -ra HOSTS <<< "$INFERENCE_ALLOWLIST"
 for h in "${HOSTS[@]}"; do

@@ -32,6 +32,16 @@ bytes=$(du -sb "$SUBMISSION" | cut -f1)
 [ "$bytes" -le "$CAP" ] || { echo "void: submission ${bytes}B exceeds 10GB cap" >&2; exit 2; }
 [ -f "$TESTDIR/test.src" ] && [ -f "$TESTDIR/test.ref" ] || { echo "no test data in $TESTDIR (run prepare_test.py)" >&2; exit 1; }
 
+# preflight: only submission/ is mounted (at /art), so scripts must be self-contained.
+# Warn (advisory) if any .sh/.py references a path outside it — an absolute
+# /workspace or /home path, or a ../ escape won't exist at decode time and voids
+# the run. grep -r --include avoids glob/missing-file errors under `set -o pipefail`.
+PREFLIGHT_RE='/workspace|/home/[a-z]|\.\./'
+if grep -rInE --include='*.sh' --include='*.py' "$PREFLIGHT_RE" "$SUBMISSION" 2>/dev/null | grep -q .; then
+  echo "WARN: submission scripts reference paths outside submission/ — decode may void:" >&2
+  grep -rInE --include='*.sh' --include='*.py' "$PREFLIGHT_RE" "$SUBMISSION" 2>/dev/null | head -6 | sed 's/^/  /' >&2
+fi
+
 # advisory from-scratch provenance scan (airgap is the real enforcement)
 python3 "$SCRIPTDIR/check_from_scratch.py" "$SUBMISSION" | tee "$WORK/from_scratch.json" >&2
 
