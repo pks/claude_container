@@ -82,7 +82,8 @@ RUN uv add \
       'datasets==4.8.5' \
       'sacrebleu==2.6.0' \
       'sentencepiece==0.2.1' \
-      'tensorboard==2.20.0'
+      'tensorboard==2.20.0' \
+      'tbparse==0.0.9'
 # NB: no unbabel-comet / CometKiwi here — the bench forbids pretrained models
 # (incl. as a data-selection filter), and offline runtime can't fetch it anyway.
 # COMET as a scoring metric lives in the external scorer, not the agent image.
