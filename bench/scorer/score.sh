@@ -66,8 +66,15 @@ docker run --rm --network none --gpus all \
   bash -lc "timeout ${DECODE_BUDGET} ./decode.sh /work/decode_input.txt /work/out.hyp"
 decode_s=$(( $(date +%s) - t0 ))
 
-# 5. un-permute, strip canaries, sacreBLEU once
-python3 "$SCRIPTDIR/score.py" "$WORK/out.hyp" "$WORK/perm.json" "$TESTDIR/test.ref" "$WORK/result.json"
+# 5. un-permute, strip canaries, sacreBLEU once. Run INSIDE the image — sacrebleu
+#    is baked there, the host has no such dep. No network, no GPU needed; mount
+#    the work dir (out.hyp/perm.json in, result.json out), the test ref (ro), and
+#    the scorer code (ro).
+docker run --rm --network none \
+  --user "$(id -u):$(id -g)" -e HOME=/tmp \
+  -v "$WORK":/work -v "$TESTDIR":/testdata:ro -v "$SCRIPTDIR":/scorer:ro \
+  -w /scorer "$IMAGE" \
+  python3 score.py /work/out.hyp /work/perm.json /testdata/test.ref /work/result.json
 python3 - "$WORK/result.json" "$decode_s" "$bytes" <<'PY'
 import json, sys
 r = json.load(open(sys.argv[1]))
