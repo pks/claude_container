@@ -115,4 +115,15 @@ if [ "$rc" = 124 ] || [ "$elapsed" -ge "$BENCH_BUDGET_S" ] || [ "$rc" = 0 ]; the
 else
   echo "bench-egress: segment ended rc=$rc, ${elapsed}/${BENCH_BUDGET_S}s used — resume will continue" >&2
 fi
+# Dump token usage + cost from the persisted pi session(s) to a durable file
+# every segment (best-effort; the session jsonl lives on the state volume, so
+# cost survives container removal). Overwritten each segment → always the
+# cumulative run total. Never fails the run.
+if command -v python3 >/dev/null 2>&1; then
+  HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  python3 "$HERE/bench-cost.py" "$STATE_DIR/home/.pi/agent/sessions" \
+    > "$STATE_DIR/cost.json" 2>/dev/null \
+    && echo "bench-egress: cost -> $STATE_DIR/cost.json ($(python3 -c 'import json,sys;print("$"+str(json.load(open(sys.argv[1]))["cost_usd"]))' "$STATE_DIR/cost.json" 2>/dev/null))" >&2 \
+    || echo "bench-egress: cost dump skipped (no session usage yet)" >&2
+fi
 echo "bench-egress: deliverable in $STATE_DIR/workspace (model/ + decode.sh); score with bench/scorer/score.sh" >&2
