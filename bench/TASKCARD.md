@@ -7,8 +7,6 @@ data cleaning, and recipe are up to you — devising them is the task.
 ## Goal
 
 - EN→DE, WMT14 news. Headline metric: **test BLEU** (newstest2014).
-- Reference line: from-scratch Transformer-base ≈ **27** (Vaswani et al., 2017) —
-  a target, not a ceiling.
 - Train as many models as you want; submit **one** final system (an ensemble of your
   own models counts as one).
 
@@ -75,11 +73,6 @@ The harness mounts **only** `submission/`; the **10 GB cap is on the whole dir**
   **(test BLEU, train time, decode time)** + the curve, not one scalar.
 - **Integrity:** harness score is authoritative; peeking / self-reporting / rule
   violations void or penalize.
-
-## Optional variant — reproduce Transformer-base
-
-Same rules, constrained to a standard AR Transformer-base (6+6, d=512, 8 heads,
-ffn 2048, ~65M) — report how close to ≈27. Sharper, known-achievable target.
 
 ## Deliberately unspecified (the point)
 
