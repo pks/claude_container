@@ -1,4 +1,4 @@
-# MachineTranslationModelingBench — Task Card (v0)
+# MachineTranslationModelingBench — Task Card (v1, anchor-free)
 
 **Train the best English→German MT model you can, from scratch, and maximize its
 BLEU on a held-out test set scored exactly once.** Architecture, hyperparameters,

@@ -13,6 +13,14 @@ after run-4; subsequent cohorts use the anchor-free card.
 
 - **-01 = opus-5** (anthropic), **-02 = gpt-5.6-sol** (openai).
 
+**Provenance (cohort A):** repo HEAD `1b89bca` at last build; bench image
+`mtbench-container` built **2026-08-08T06:31 UTC** (both nodes); pi-coding-agent
+**0.84.1**; TASKCARD **v0 (anchored)** throughout. Runs 1–2 predate a few
+harness-tooling commits (scorer/cost) made mid-cohort, but the agent-facing
+image + TASKCARD were unchanged; those commits only affect scoring/cost
+recovery, not agent behavior. Anchor-free card is **v1** (`f8a7700`);
+`PI_OFFLINE=1` (suppress npm phone-home pings) added after cohort A.
+
 ## Scoreboard — test BLEU @ inference $
 
 | run | opus (-01) | gpt (-02) | winner |

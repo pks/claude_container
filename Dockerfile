@@ -131,6 +131,10 @@ ENV HF_DATASETS_OFFLINE=1
 ENV TRANSFORMERS_OFFLINE=1
 ENV HF_HUB_OFFLINE=1
 ENV MTBENCH_DATA=/opt/mtbench/wmt14
+# PI_OFFLINE suppresses pi's startup version-check + package-update pings (they
+# phone home to npm and just fail-noisily behind the egress lock). Does NOT
+# affect provider/inference requests — those go through the proxy as normal.
+ENV PI_OFFLINE=1
 
 # Initialize workspace repo. Append project-specific ignores (checkpoints,
 # logs, tensorboard event files) to the .gitignore that uv init created,
