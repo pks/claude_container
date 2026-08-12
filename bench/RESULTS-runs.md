@@ -11,6 +11,14 @@ Transformer-base ≈ 27 (Vaswani 2017)" as a reference line + a "reproduce
 Transformer-base ≈27" optional variant. Those anchors were removed in `f8a7700`
 after run-4; subsequent cohorts use the anchor-free card.
 
+**Cohort B (run-5): anchor-free TASKCARD v1** — no reference score named, sole
+instruction "maximize BLEU". Image rebuilt with `PI_OFFLINE=1` (npm phone-home
+pings silenced). Ran to test the anchor-vs-ceiling question (finding 2): opus
+**still self-capped training ~9.3 h** and landed **26.80** (low end of its own
+band) — removing the "≈27" reference did **not** push it toward 28. Verdict:
+the self-cap is genuine early-convergence (lr floor + flat ppl), **not
+anchoring**.
+
 - **-01 = opus-5** (anthropic), **-02 = gpt-5.6-sol** (openai).
 
 **Provenance (cohort A):** repo HEAD `1b89bca` at last build; bench image
@@ -21,6 +29,13 @@ image + TASKCARD were unchanged; those commits only affect scoring/cost
 recovery, not agent behavior. Anchor-free card is **v1** (`f8a7700`);
 `PI_OFFLINE=1` (suppress npm phone-home pings) added after cohort A.
 
+**Provenance (cohort B, run-5):** anchor-free TASKCARD **v1** (`f8a7700`,
+"maximize BLEU", no reference score); image rebuilt with **`PI_OFFLINE=1`**
+(verified 0 ping noise in logs); pi-coding-agent **0.84.1**; both runs completed
+the full **43200 s** compute clock, `.bench_done` at 21:58/21:59 UTC
+2026-08-10; scored `nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0`,
+100/100 canaries non-empty, test ≥ dev both.
+
 ## Scoreboard — test BLEU @ inference $
 
 | run | opus (-01) | gpt (-02) | winner |
@@ -29,10 +44,14 @@ recovery, not agent behavior. Anchor-free card is **v1** (`f8a7700`);
 | 2 | 26.74 / $5.92 | — (preempted ×2, never completed) | opus (only finisher) |
 | 3 | **27.03** / $9.61 | 26.93 / $3.31 | opus +0.10 |
 | 4 | 26.86 / $5.83 | **26.92** / $1.98 | **gpt +0.06** |
-| **mean** | **27.02** / $7.23 (4 runs) | **26.38** / $3.67 (3 done) | — |
+| 5† | **26.80** / $6.08 | 25.85 / $2.90 | opus +0.95 |
+| **mean** | **26.97** / $7.00 (5 runs) | **26.25** / $3.48 (4 done) | — |
 
-gpt's r1 (25.28) drags its mean; its last two (26.93, 26.92) sit dead-even with
-opus at ~half the cost.
+† Run 5 = **cohort B, anchor-free card**. All others anchored (cohort A).
+
+gpt's r1 (25.28) + r5 (25.85) drag its mean; its two middle runs (26.93, 26.92)
+sit dead-even with opus at ~half the cost. opus's band stays tight (26.74–27.44,
+~0.7 BLEU) across both the anchored and anchor-free cards.
 
 ## Per-run detail
 
@@ -46,6 +65,8 @@ opus at ~half the cost.
 | 3 | gpt | 26.93 | 26.10 | 3.31 | 475 MB | 18s | 7.5 h train + resume, 126k steps, packaged at wire |
 | 4 | opus | 26.86 | 26.16 | 5.83 | 5.5 GB | 17s | single big (6+6, d1024), **`--max-hours 8.3`** (self-capped) |
 | 4 | gpt | 26.92 | 26.47 | 1.98 | 473 MB | 36s | **10.8 h** train to the wire, 205k steps, packaged at wire |
+| 5 | opus | 26.80 | 26.30 | 6.08 | 486 MB | 21s | big (6+6, d1024), **`--time-budget 9.3`** (self-capped) + **avg-of-8** ckpt, decode-α sweep; **anchor-free card** |
+| 5 | gpt | 25.85 | 25.40 | 2.90 | 498 MB | 68s | **11.2 h** train to the wire, 124k steps, single ckpt (no avg), packaged at wire |
 
 All completed runs: from-scratch attested, 100/100 canaries non-empty (full
 coverage, no input special-casing), test ≥ dev (no dev-overfit).
@@ -60,11 +81,16 @@ coverage, no input special-casing), test ≥ dev (no dev-overfit).
    the wall is real. SOTA 30–35 requires back-translation (external monolingual
    data), which the bench forbids.
 
-2. **opus self-caps early — forfeits the ~1 BLEU that closes 27→28.** Every run it
-   stopped ~8–9.5 h (r4 explicitly `--max-hours 8.3`, ~30 % of compute unused).
-   On a compute-bound task that's leaving the decisive resource on the table.
-   Consistent with anchoring/satisficing to the card's "≈27" reference (removed
-   in `f8a7700` to test this) and/or conservative convergence judgment.
+2. **opus self-caps training early — and it's convergence judgment, NOT anchoring
+   (settled r5).** Every run it stopped training ~8–9.5 h (r4 `--max-hours 8.3`,
+   r5 `--time-budget 9.3`), ~25–30 % of the compute budget not spent on training.
+   Hypothesis was anchoring/satisficing to the card's "≈27" reference. **Run 5
+   removed that anchor (v1 card) — opus still capped ~9.3 h and landed 26.80, the
+   low end of its own band, not higher.** So the "27" number wasn't the cause: the
+   cap is a genuine convergence call (lr already at floor, ppl flat ~14). The extra
+   ~2.7 h wouldn't buy the 27→28 BLEU; the wall is data+model, not willingness to
+   spend. (opus does spend the freed time on ckpt-averaging + decode tuning, not
+   idle.)
 
 3. **gpt "brute-forces compute" and converged up.** One long train to the wire +
    package-at-the-end. r1 (25.28, aggressive subsample) → r3/r4 (~26.9, full data,
@@ -91,5 +117,5 @@ coverage, no input special-casing), test ≥ dev (no dev-overfit).
   `ops/bench-cost.py` sums it, `run-scoring.sh` folds it into `result.json`.
 - Scorer runs decode locked (`--network none`, GPU on, only `submission/` mounted);
   sacreBLEU step runs inside the image (`d007843`).
-- Next cohort: anchor-free TASKCARD (`f8a7700`). Watch whether opus then uses full
-  budget and moves 27→~28 (anchor) or still self-caps ~27 (real ceiling).
+- Anchor-free cohort (r5, `f8a7700` card + `PI_OFFLINE=1` image): **done — opus
+  still self-caps, real ceiling** (finding 2). No further anchor A/B needed.
