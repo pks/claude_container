@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""collab-post — append one result to this agent's leaderboard shard, then git-sync.
+
+Per-agent shard (leaderboard/<agent>.jsonl) → 4 writers never touch the same file →
+zero merge conflicts. Agents call this after every dev eval.
+
+Env: COLLAB_DIR (default /collab)  ·  COLLAB_AGENT (e.g. agent-0)  ·  COLLAB_GPU (optional tag)
+
+  collab-post --run dag-glat-v3 --arch DAG --dev-bleu 22.9 \
+              --params-m 63 --T 1 --infer-ms 4.2 --recipe code/agent-2/dag-glat-v3
+"""
+import argparse, json, os, sys, subprocess, fcntl, pathlib, datetime
+
+COLLAB_DIR = os.environ.get("COLLAB_DIR", "/collab")
+AGENT = os.environ.get("COLLAB_AGENT", "")
+
+
+def die(m):
+    print(f"collab-post: {m}", file=sys.stderr); sys.exit(1)
+
+
+def git(*a):
+    return subprocess.run(["git", "-C", COLLAB_DIR, *a], capture_output=True, text=True)
+
+
+def sync(files, msg):
+    """pull-rebase, add own files, commit, push (retry). Own-shard-only → rebase never conflicts."""
+    with open(pathlib.Path(COLLAB_DIR, ".collab.lock"), "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        git("pull", "--rebase", "--autostash")
+        git("add", *files)
+        if git("commit", "-m", msg).returncode != 0:
+            return  # nothing staged
+        for _ in range(5):
+            if git("push").returncode == 0:
+                return
+            git("pull", "--rebase", "--autostash")
+        print("collab-post: push failed after retries — committed locally, will sync later", file=sys.stderr)
+
+
+def main():
+    if not AGENT:
+        die("COLLAB_AGENT not set")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--run", required=True, help="short id/name of this experiment")
+    ap.add_argument("--dev-bleu", type=float, required=True, help="newstest2013 full-dev sacreBLEU/13a")
+    ap.add_argument("--arch", default="", help="AR / CMLM / DAG / ...")
+    ap.add_argument("--params-m", type=float, help="model size, millions of params")
+    ap.add_argument("--size-mb", type=float, help="on-disk size (MB)")
+    ap.add_argument("--T", type=int, dest="decode_T", help="decode iterations / passes")
+    ap.add_argument("--infer-ms", type=float, dest="infer_ms_sent", help="ms/sentence (GPU-tagged)")
+    ap.add_argument("--throughput", type=float, dest="throughput_sent_s")
+    ap.add_argument("--gpu", default=os.environ.get("COLLAB_GPU", ""))
+    ap.add_argument("--recipe", default="", help="pointer into code/<agent>/... to reproduce")
+    ap.add_argument("--notes", default="")
+    a = ap.parse_args()
+
+    rec = {"agent": AGENT,
+           "ts": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+           "run": a.run, "arch": a.arch, "dev_bleu": a.dev_bleu}
+    for k in ("params_m", "size_mb", "decode_T", "infer_ms_sent", "throughput_sent_s", "gpu", "recipe", "notes"):
+        v = getattr(a, k)
+        if v not in (None, ""):
+            rec[k] = v
+
+    shard = pathlib.Path(COLLAB_DIR, "leaderboard", f"{AGENT}.jsonl")
+    shard.parent.mkdir(parents=True, exist_ok=True)
+    with open(shard, "a") as f:
+        f.write(json.dumps(rec) + "\n")
+    sync([f"leaderboard/{AGENT}.jsonl"], f"post({AGENT}): {a.run} dev={a.dev_bleu}")
+    print(f"collab-post: {a.run} dev_bleu={a.dev_bleu} posted to {AGENT}.jsonl")
+
+
+if __name__ == "__main__":
+    main()

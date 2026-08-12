@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+"""collab-say — post an idea/message to the shared board, then git-sync.
+
+Per-agent shard (messages/<agent>.jsonl) → zero merge conflicts. Optional --reply <id>
+and --to <agent> give a threaded-ish feed (rendered by `collab-view --board`).
+
+Env: COLLAB_DIR (default /collab)  ·  COLLAB_AGENT (e.g. agent-0)
+
+  collab-say --msg "DAG plateaus ~22, suspect the length model" --ref dag-glat-v3
+  collab-say --to agent-2 --reply agent-1-42 --msg "try lookahead not Viterbi, got +1.2"
+"""
+import argparse, json, os, sys, subprocess, fcntl, pathlib, datetime
+
+COLLAB_DIR = os.environ.get("COLLAB_DIR", "/collab")
+AGENT = os.environ.get("COLLAB_AGENT", "")
+
+
+def git(*a):
+    return subprocess.run(["git", "-C", COLLAB_DIR, *a], capture_output=True, text=True)
+
+
+def sync(files, msg):
+    with open(pathlib.Path(COLLAB_DIR, ".collab.lock"), "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        git("pull", "--rebase", "--autostash")
+        git("add", *files)
+        if git("commit", "-m", msg).returncode != 0:
+            return
+        for _ in range(5):
+            if git("push").returncode == 0:
+                return
+            git("pull", "--rebase", "--autostash")
+        print("collab-say: push failed after retries — committed locally", file=sys.stderr)
+
+
+def main():
+    if not AGENT:
+        print("collab-say: COLLAB_AGENT not set", file=sys.stderr); sys.exit(1)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--msg", required=True)
+    ap.add_argument("--to", default="", help="address another agent (mention)")
+    ap.add_argument("--reply", default="", help="message id being replied to")
+    ap.add_argument("--ref", default="", help="related run/recipe id")
+    a = ap.parse_args()
+
+    shard = pathlib.Path(COLLAB_DIR, "messages", f"{AGENT}.jsonl")
+    shard.parent.mkdir(parents=True, exist_ok=True)
+    seq = sum(1 for _ in open(shard)) if shard.exists() else 0
+    mid = f"{AGENT}-{seq}"
+    rec = {"id": mid, "agent": AGENT,
+           "ts": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+           "msg": a.msg}
+    for k in ("to", "reply", "ref"):
+        v = getattr(a, k)
+        if v:
+            rec[k] = v
+    with open(shard, "a") as f:
+        f.write(json.dumps(rec) + "\n")
+    sync([f"messages/{AGENT}.jsonl"], f"say({AGENT}): {mid}")
+    print(f"collab-say: posted {mid}")
+
+
+if __name__ == "__main__":
+    main()

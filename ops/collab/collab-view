@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""collab-view — pull latest, then render the shared leaderboard / board to stdout.
+
+Read-only + local render (nothing committed) → no shared rendered file to conflict on.
+Agents run this before starting an experiment (see what's winning / on the frontier / untried)
+and between runs (read recent ideas).
+
+  collab-view              # leaderboard, sorted by dev-BLEU
+  collab-view --pareto     # only the non-dominated frontier (BLEU up, params down, T down)
+  collab-view --board      # the message feed (ideas), time-sorted, replies indented
+  collab-view --all        # leaderboard + pareto + board
+  collab-view --no-pull    # skip the git pull (render what's local)
+
+Env: COLLAB_DIR (default /collab)
+"""
+import argparse, json, os, sys, subprocess, glob, pathlib
+
+COLLAB_DIR = os.environ.get("COLLAB_DIR", "/collab")
+
+
+def pull():
+    subprocess.run(["git", "-C", COLLAB_DIR, "pull", "--rebase", "--autostash"],
+                   capture_output=True, text=True)
+
+
+def load(kind):
+    rows = []
+    for p in sorted(glob.glob(str(pathlib.Path(COLLAB_DIR, kind, "*.jsonl")))):
+        with open(p) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+    return rows
+
+
+def dominated(a, b):
+    """b dominates a on (dev_bleu up, params_m down, decode_T down), strict somewhere."""
+    ge = b["dev_bleu"] >= a["dev_bleu"] and b["params_m"] <= a["params_m"] and b["decode_T"] <= a["decode_T"]
+    gt = b["dev_bleu"] > a["dev_bleu"] or b["params_m"] < a["params_m"] or b["decode_T"] < a["decode_T"]
+    return ge and gt
+
+
+def fmt_table(rows):
+    if not rows:
+        return "(no entries yet)"
+    cols = [("run", 18), ("agent", 8), ("arch", 6), ("dev_bleu", 8),
+            ("params_m", 8), ("decode_T", 3), ("infer_ms_sent", 9), ("gpu", 7), ("notes", 30)]
+    head = "  ".join(f"{h:<{w}}" for h, w in cols)
+    out = [head, "  ".join("-" * w for _, w in cols)]
+    for r in rows:
+        cells = []
+        for k, w in cols:
+            v = r.get(k, "")
+            if isinstance(v, float):
+                v = f"{v:g}"
+            cells.append(f"{str(v):<{w}}"[:w])
+        out.append("  ".join(cells))
+    return "\n".join(out)
+
+
+def show_leaderboard(pareto_only):
+    rows = load("leaderboard")
+    rows = [r for r in rows if "dev_bleu" in r]
+    rows.sort(key=lambda r: r["dev_bleu"], reverse=True)
+    if pareto_only:
+        pts = [r for r in rows if all(k in r for k in ("dev_bleu", "params_m", "decode_T"))]
+        front = [a for a in pts if not any(dominated(a, b) for b in pts if b is not a)]
+        print("=== Pareto frontier (dev-BLEU up · params down · decode-T down) ===")
+        print(fmt_table(front))
+        skipped = len(rows) - len(pts)
+        if skipped:
+            print(f"\n({skipped} entr{'y' if skipped == 1 else 'ies'} lack params_m/decode_T → excluded from Pareto)")
+    else:
+        print(f"=== Leaderboard — {len(rows)} entries, by dev-BLEU ===")
+        print(fmt_table(rows))
+
+
+def show_board():
+    msgs = load("messages")
+    msgs.sort(key=lambda m: m.get("ts", ""))
+    by_id = {m.get("id"): m for m in msgs}
+    print(f"=== Board — {len(msgs)} messages ===")
+    for m in msgs:
+        indent = "    " if m.get("reply") in by_id else ""
+        to = f" @{m['to']}" if m.get("to") else ""
+        ref = f" [{m['ref']}]" if m.get("ref") else ""
+        print(f"{indent}{m.get('ts','')} {m.get('agent','')}{to}{ref}: {m.get('msg','')}  ({m.get('id','')})")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--pareto", action="store_true")
+    ap.add_argument("--board", action="store_true")
+    ap.add_argument("--all", action="store_true")
+    ap.add_argument("--no-pull", action="store_true")
+    a = ap.parse_args()
+    if not a.no_pull:
+        pull()
+    if a.all:
+        show_leaderboard(False); print(); show_leaderboard(True); print(); show_board()
+    elif a.board:
+        show_board()
+    else:
+        show_leaderboard(a.pareto)
+
+
+if __name__ == "__main__":
+    main()
