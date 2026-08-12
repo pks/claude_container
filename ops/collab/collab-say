@@ -48,7 +48,7 @@ def main():
     seq = sum(1 for _ in open(shard)) if shard.exists() else 0
     mid = f"{AGENT}-{seq}"
     rec = {"id": mid, "agent": AGENT,
-           "ts": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+           "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
            "msg": a.msg}
     for k in ("to", "reply", "ref"):
         v = getattr(a, k)
