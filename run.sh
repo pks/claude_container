@@ -128,6 +128,17 @@ done
 # means it reaches nothing and hangs. Set it whenever a proxy is configured.
 [ -n "${HTTPS_PROXY:-}${https_proxy:-}" ] && ENVS+=(-e NODE_USE_ENV_PROXY=1)
 
+# Collaboration (ops/collab-launch.sh): if COLLAB_HOST_DIR is set, mount the agent's
+# shared-blackboard clone at /collab and forward its identity so collab-{post,say,view}
+# work inside the container. No-op otherwise (solo arm / non-collab runs).
+if [ -n "${COLLAB_HOST_DIR:-}" ]; then
+  MOUNTS+=(-v "$COLLAB_HOST_DIR:/collab")
+  ENVS+=(-e "COLLAB_DIR=${COLLAB_DIR:-/collab}")
+  for cv in COLLAB_AGENT COLLAB_GPU; do
+    [ -n "${!cv:-}" ] && ENVS+=(-e "$cv=${!cv}")
+  done
+fi
+
 # pi session location (for resume detection) + fresh-start prompt. Caveman is
 # dropped for reproducibility — the agent gets a neutral instruction, no skill.
 SESSION_DIR=.pi/agent/sessions

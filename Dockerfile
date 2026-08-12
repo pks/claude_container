@@ -191,5 +191,8 @@ USER root
 COPY ops/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY ops/proxy/proxy-entrypoint.sh /usr/local/bin/proxy-entrypoint.sh
 COPY ops/proxy/tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
-RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/proxy-entrypoint.sh
+# Collaboration helpers (shared blackboard) — on PATH for the agent.
+COPY ops/collab/collab-post ops/collab/collab-say ops/collab/collab-view /usr/local/bin/
+RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/proxy-entrypoint.sh \
+      /usr/local/bin/collab-post /usr/local/bin/collab-say /usr/local/bin/collab-view
 USER ${USER_UID}:${USER_GID}
