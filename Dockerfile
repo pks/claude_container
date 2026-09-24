@@ -41,7 +41,7 @@ RUN if [ "${USERNAME}" != "ubuntu" ]; then \
     fi \
  && if [ "${USER_GID}" != "$(id -g ${USERNAME})" ]; then groupmod -g ${USER_GID} ${USERNAME}; fi \
  && if [ "${USER_UID}" != "$(id -u ${USERNAME})" ]; then usermod -u ${USER_UID} ${USERNAME}; fi \
- && mkdir -p /workspace /home/${USERNAME}/.pi/agent \
+ && mkdir -p /workspace /home/${USERNAME}/.claude /home/${USERNAME}/.pi/agent \
  && chown -R ${USER_UID}:${USER_GID} /workspace /home/${USERNAME}
 
 WORKDIR /workspace
@@ -58,8 +58,8 @@ ENV LD_LIBRARY_PATH="$CUDA_HOME/lib64"
 RUN git config --global user.email "${USERNAME}@localhost" \
  && git config --global user.name "${USERNAME}"
 
-# uv (the Claude Code CLI is intentionally NOT installed — the bench is pi-only
-# for reproducibility).
+# uv. (Claude Code is installed further down, next to the plugin step, so adding it
+# does not invalidate the torch/venv layers below.)
 RUN curl -4LsSf --retry 100 --retry-all-errors --retry-delay 2 --retry-max-time 600 https://astral.sh/uv/install.sh | sh
 
 # Python environment — uv init in one layer, deps in the next so changing a
@@ -148,11 +148,18 @@ RUN rm -f main.py \
  && git add * .python-version .gitignore \
  && git commit -m init
 
-# pi-coding-agent (the only agent — no Claude Code, no caveman skill, for
-# reproducibility). nvm provides node for the npm-global pi install.
-RUN curl -4 --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
+# Claude Code + plugins + pi-coding-agent + caveman skill. The bench arm stays pi-only
+# for reproducibility (PROFILE=pi-*); the collab arm runs Claude Code on the host
+# subscription (PROFILE=claude). Plugin enable state is declared in
+# ops/claude-settings.json (copied below) — install fetches the plugin code,
+# settings.json wires up the enable. nvm provides node for the npm-global pi install.
+RUN curl -4fsSL --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 https://claude.ai/install.sh | bash \
+ && claude plugin marketplace add JuliusBrussee/caveman \
+ && claude plugin install caveman@caveman \
+ && curl -4 --retry 100 --retry-all-errors --retry-delay 3 --retry-max-time 600 -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash \
  && npm config set prefix '~/.npm-global' \
- && npm install -g @earendil-works/pi-coding-agent@0.84.1
+ && npm install -g @earendil-works/pi-coding-agent@0.85.1 \
+ && npx skills add JuliusBrussee/caveman --yes
 
 # Put the project venv first on PATH so bare `python`/`pip` resolve to the
 # torch-equipped interpreter. The container ships no unversioned `python`
@@ -176,6 +183,11 @@ RUN install -m 0644 /etc/pi-settings/settings.default.json \
 # interactive trust prompt (agent runs headless). trust-manager keys on the
 # canonical cwd; the container always runs pi with cwd=/workspace.
 RUN printf '{\n  "/workspace": true\n}\n' > /home/${USERNAME}/.pi/agent/trust.json
+# Claude Code settings: enables the caveman plugin installed above. No PreToolUse
+# hook here — the mithril spot-interruption hook that main/ carries does not exist
+# on this branch, and a settings.json pointing at a missing command would fire on
+# every tool call.
+COPY --chown=${USER_UID}:${USER_GID} ops/claude-settings.json /home/${USERNAME}/.claude/settings.json
 COPY --chown=${USER_UID}:${USER_GID} pi-extensions /tmp/pi-extensions
 RUN pi install /tmp/pi-extensions/azure-anthropic \
  && pi install /tmp/pi-extensions/azure-openai \
@@ -192,7 +204,9 @@ COPY ops/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY ops/proxy/proxy-entrypoint.sh /usr/local/bin/proxy-entrypoint.sh
 COPY ops/proxy/tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
 # Collaboration helpers (shared blackboard) — on PATH for the agent.
-COPY ops/collab/collab-post ops/collab/collab-say ops/collab/collab-view /usr/local/bin/
+COPY ops/collab/collab-post ops/collab/collab-say ops/collab/collab-view \
+     ops/collab/collab-wiki /usr/local/bin/
 RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/proxy-entrypoint.sh \
-      /usr/local/bin/collab-post /usr/local/bin/collab-say /usr/local/bin/collab-view
+      /usr/local/bin/collab-post /usr/local/bin/collab-say /usr/local/bin/collab-view \
+      /usr/local/bin/collab-wiki
 USER ${USER_UID}:${USER_GID}

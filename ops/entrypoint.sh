@@ -6,10 +6,12 @@ set -eu
 # profile that compacts well before that line; everything else uses the
 # 1M-context profile that compacts at ~80% utilization.
 #
-# The seeded settings.json carries `.extensions` populated by `pi install` at
-# image build time. A plain overwrite would wipe that field and silently
-# disable every pi extension (azure-anthropic, gemini, …). Merge
-# instead: profile keys (retry/compaction) win; everything else is preserved.
+# The seeded settings.json carries the extension list populated by `pi install` at
+# image build time — `.packages` as of pi 0.85 (`.extensions` in older versions),
+# holding paths like ../../../../tmp/pi-extensions/azure-anthropic. A plain overwrite
+# would wipe that field and silently disable every pi extension (azure-anthropic,
+# gemini, …). Merge instead: profile keys (retry/compaction) win, everything else is
+# preserved — the merge is key-agnostic, so a future rename needs no change here.
 PI_SETTINGS_TARGET="${HOME:-/home/ubuntu}/.pi/agent/settings.json"
 PI_SETTINGS_SRC_DIR=/etc/pi-settings
 # Only run pi-settings profile selection when actually launching pi.

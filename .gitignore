@@ -3,6 +3,11 @@
 attempts/
 plan/
 state/
+collab_state/
+
+# `make wiki` scratch: local clone of collab_v0.git + rendered static site
+.wiki-clone/
+wiki-site/
 
 gemini-debug.log
 pi-api-types.txt

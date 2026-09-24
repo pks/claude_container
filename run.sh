@@ -34,15 +34,27 @@ if [ -n "$CONFIG_PROFILE" ] && [ "$CONFIG_PROFILE" = "$PROFILE" ]; then
   PI_MODEL_DEFAULT="$CONFIG_MODEL"
 fi
 
-# Parse .env into the host shell (for script-side dispatch like pi-azure
+# Parse the env file into the host shell (for script-side dispatch like pi-azure
 # key selection) and collect the names so we can forward them to the
 # container below. Sourced with `.` it would execute as shell code under
 # `set -eu` — risky for a secrets file and brittle around values with
 # command substitutions or unescaped metacharacters. Each line is treated
 # as a literal KEY=VALUE; one surrounding pair of matching quotes is
 # stripped, otherwise values are passed through verbatim.
+#
+# ENV_FILE points at one of the repo's per-vendor secret files, e.g.
+#   ENV_FILE=../.env-openrouter ./run.sh pi-or
+# The repo root keeps .env-{claude,deepseek,gemini,gpt,openrouter} (all matched by
+# the root .gitignore's `.env-*`); the default stays ./.env so existing use is
+# unchanged. A missing file is an error when named explicitly — silently running
+# keyless would fail later with a confusing provider error.
+ENV_FILE="${ENV_FILE:-.env}"
+if [ -n "${ENV_FILE:-}" ] && [ "$ENV_FILE" != .env ] && [ ! -f "$ENV_FILE" ]; then
+  echo "run.sh: ENV_FILE '$ENV_FILE' not found (cwd $(pwd))" >&2
+  exit 1
+fi
 ENV_NAMES_FROM_FILE=()
-if [ -f .env ]; then
+if [ -f "$ENV_FILE" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
     [[ "$line" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
     name="${BASH_REMATCH[2]}"
@@ -53,7 +65,8 @@ if [ -f .env ]; then
     esac
     export "$name=$val"
     ENV_NAMES_FROM_FILE+=("$name")
-  done < .env
+  done < "$ENV_FILE"
+  echo "run.sh: loaded $(printf '%s ' "${ENV_NAMES_FROM_FILE[@]}")from $ENV_FILE" >&2
 fi
 
 # --gpus alone is not enough: the nvidia runtime hook injects the GPU
@@ -104,9 +117,74 @@ MOUNTS=(
   -v "$STATE_DIR/home:$CONTAINER_HOME"
 )
 
-# pi-only bench: the Claude Code CLI is dropped for reproducibility, so no claude
-# auth mounts and no CLAUDE_CODE_* env. Providers are configured per profile below.
+# The bench arm is pi-only for reproducibility; the collab arm also runs Claude Code
+# (PROFILE=claude) on the host's subscription. Providers are configured per profile below.
 ENVS=()
+
+# Claude Code auth: COPY the host credential into this agent's own state home instead
+# of bind-mounting the host file. Several agents run concurrently per host
+# (ops/collab-launch.sh) and Claude Code rewrites .credentials.json on token refresh,
+# so a shared mount is a write race on the file every agent depends on. $STATE_DIR/home
+# is already per-agent, so a copy gives each agent a private, refreshable credential.
+# Copied only when absent: an in-container refresh must not be clobbered on restart.
+#
+# ~/.claude.json is deliberately NOT copied. It is user state (tips, project history),
+# not auth, and the in-container Claude Code replaces a foreign copy with a fresh
+# config anyway — dropping hasCompletedOnboarding, which leaves the agent parked on
+# the interactive theme picker forever (a headless run never answers it). Write a
+# minimal onboarding-complete config instead; CLAUDE_CODE_THEME alone does not skip it.
+if [ "$PROFILE" = claude ]; then
+  mkdir -p "$STATE_DIR/home/.claude"
+  if [ -f ~/.claude/.credentials.json ] && [ ! -f "$STATE_DIR/home/.claude/.credentials.json" ]; then
+    install -m 600 ~/.claude/.credentials.json "$STATE_DIR/home/.claude/.credentials.json"
+    echo "run.sh: seeded .credentials.json into $STATE_DIR/home" >&2
+  fi
+  if [ ! -f "$STATE_DIR/home/.claude/.credentials.json" ]; then
+    echo "run.sh: no ~/.claude/.credentials.json on this host — run 'claude' once to log in" >&2
+    exit 1
+  fi
+  # Merge the first-run flags in (create the file if absent, preserve whatever Claude
+  # Code has already written). Idempotent across restarts. THREE interactive gates block
+  # a headless agent and no env var skips them in 2.1.x — each one parks the agent on a
+  # menu it can never answer, burning the whole wall clock:
+  #   1. theme picker              -> hasCompletedOnboarding
+  #   2. "is this folder trusted?" -> projects./workspace.hasTrustDialogAccepted
+  #                                   (the Claude Code analogue of ~/.pi/agent/trust.json)
+  #   3. --dangerously-skip-permissions acceptance -> bypassPermissionsModeAccepted
+  # Key names came from a working host config and from the CLI bundle's own strings
+  # (grep -aoE 'bypassPermissions[A-Za-z]*'); re-check them after a Claude Code upgrade.
+  CFG="$STATE_DIR/home/.claude.json" python3 - <<'PY'
+import copy, json, os
+p = os.environ["CFG"]
+try:
+    with open(p) as f:
+        cfg = json.load(f)
+except Exception:
+    cfg = {}
+before = copy.deepcopy(cfg)
+cfg.setdefault("installMethod", "native")
+cfg.setdefault("autoUpdates", False)
+cfg["hasCompletedOnboarding"] = True
+cfg["bypassPermissionsModeAccepted"] = True
+cfg["theme"] = cfg.get("theme", "dark")
+proj = cfg.setdefault("projects", {}).setdefault("/workspace", {})
+proj["hasTrustDialogAccepted"] = True
+proj.setdefault("allowedTools", [])
+proj.setdefault("hasClaudeMdExternalIncludesApproved", False)
+proj.setdefault("hasClaudeMdExternalIncludesWarningShown", False)
+if cfg != before:
+    with open(p, "w") as f:
+        json.dump(cfg, f, indent=2)
+    print(f"run.sh: pre-accepted onboarding + /workspace trust in {p}", flush=True)
+PY
+  ENVS+=(
+    -e CLAUDE_CODE_THEME=dark
+    -e CLAUDE_CODE_ACCEPT_TOS=yes
+    -e CLAUDE_CODE_SKIP_TRUST_SCREEN=1
+  )
+  # Adaptive thinking overrides --effort; keep it off unless ADAPTIVE_THINKING is set.
+  [ -z "${ADAPTIVE_THINKING:-}" ] && ENVS+=(-e CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=yes)
+fi
 # Forward every variable declared in .env into the container — adding one
 # there auto-propagates without script changes. Names came from the safe
 # parser above; `-e VAR` (no value) tells docker to pull from our env.
@@ -128,6 +206,10 @@ done
 # means it reaches nothing and hangs. Set it whenever a proxy is configured.
 [ -n "${HTTPS_PROXY:-}${https_proxy:-}" ] && ENVS+=(-e NODE_USE_ENV_PROXY=1)
 
+# Card name (e.g. TITAN, A6000) — the plan tells the agent to check $MTBENCH_GPU, and it
+# must be there in both arms, so it is forwarded independently of the collab block below.
+[ -n "${MTBENCH_GPU:-}" ] && ENVS+=(-e "MTBENCH_GPU=$MTBENCH_GPU")
+
 # Collaboration (ops/collab-launch.sh): if COLLAB_HOST_DIR is set, mount the agent's
 # shared-blackboard clone at /collab and forward its identity so collab-{post,say,view}
 # work inside the container. No-op otherwise (solo arm / non-collab runs).
@@ -139,9 +221,13 @@ if [ -n "${COLLAB_HOST_DIR:-}" ]; then
   done
 fi
 
-# pi session location (for resume detection) + fresh-start prompt. Caveman is
-# dropped for reproducibility — the agent gets a neutral instruction, no skill.
-SESSION_DIR=.pi/agent/sessions
+# Session location (for resume detection) + fresh-start prompt. Caveman is dropped
+# for reproducibility — the agent gets a neutral instruction, no skill. Claude Code
+# keeps its sessions elsewhere, hence the per-profile path.
+case "$PROFILE" in
+  claude) SESSION_DIR=.claude/projects ;;
+  *)      SESSION_DIR=.pi/agent/sessions ;;
+esac
 FRESH_PROMPT='carry out doc/PLAN.md'
 RESUME_PROMPT='Your prior session was interrupted (a manual exit or restart) and is now being resumed. /workspace and your prior session are bind-mounted from host-persistent storage, so they survived intact. Read /workspace/STATUS.md if present, check `git log` and the working-tree state, then continue carrying out doc/PLAN.md from where you left off.'
 
@@ -153,14 +239,28 @@ RESUMING=0
 if [ "$RESUMING" = 1 ]; then
   echo "run.sh: resuming $PROFILE in $STATE_DIR (make reseed to start fresh)" >&2
   PI_RESUME=(-c)
+  CLAUDE_RESUME=(--continue)
   EFFECTIVE_PROMPT="$RESUME_PROMPT"
 else
   echo "run.sh: starting fresh $PROFILE in $STATE_DIR" >&2
   PI_RESUME=()
+  CLAUDE_RESUME=()
   EFFECTIVE_PROMPT="$FRESH_PROMPT"
 fi
 
 case "$PROFILE" in
+  claude)
+    # Claude Code on the host subscription — no API key, so no per-token cost.
+    # Permission bypass comes from settings.json (permissions.defaultMode), NOT from
+    # --dangerously-skip-permissions: that flag opens an interactive "accept
+    # responsibility" dialog which a headless agent cannot answer, and which
+    # bypassPermissionsModeAccepted in .claude.json does not suppress in 2.1.x.
+    ENTRYPOINT=claude
+    MODEL="${MODEL:-claude-opus-5}"
+    EFFECTIVE_THINKING="${THINKING:-max}"
+    ARGS=("${CLAUDE_RESUME[@]}" --model "$MODEL" \
+          --effort "$EFFECTIVE_THINKING" "$EFFECTIVE_PROMPT")
+    ;;
   pi-ollama)
     ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
     MODEL=qwen3.6:35b
@@ -206,8 +306,18 @@ case "$PROFILE" in
     ;;
   pi-or)
     ENTRYPOINT="$CONTAINER_HOME/.npm-global/bin/pi"
-    : "${OPENROUTER_API_KEY:?OPENROUTER_API_KEY must be set for pi-or}"
-    MODEL=moonshotai/kimi-k2.6
+    : "${OPENROUTER_API_KEY:?OPENROUTER_API_KEY must be set for pi-or (try ENV_FILE=../.env-openrouter)}"
+    # Forward explicitly so the key also works when exported in the shell rather
+    # than listed in ENV_FILE. NOTE: pi takes it on argv too, so the key is visible
+    # in `ps` on the host and inside the container.
+    ENVS+=(-e OPENROUTER_API_KEY)
+    # Model is a full OpenRouter id and must resolve in the live catalog — a stale
+    # default 404s on the first turn. The previous default (moonshotai/kimi-k2.6) no
+    # longer appears in /api/v1/models; verified present 2026-09-09: z-ai/glm-5.3,
+    # deepseek/deepseek-v4-pro-0813, google/gemini-3.8-flash, qwen/qwen3.8-max-0902.
+    PI_MODEL="${PI_MODEL:-${PI_MODEL_DEFAULT:-z-ai/glm-5.3}}"
+    ENVS+=(-e "PI_MODEL=$PI_MODEL")
+    MODEL="$PI_MODEL"
     EFFECTIVE_THINKING="${THINKING:-high}"
     ARGS=("${PI_RESUME[@]}" --provider openrouter --api-key "$OPENROUTER_API_KEY" --model "$MODEL" --thinking "$EFFECTIVE_THINKING" "$EFFECTIVE_PROMPT")
     ;;
@@ -228,7 +338,7 @@ case "$PROFILE" in
     ARGS=()
     ;;
   *)
-    echo "usage: $0 {pi-azure|pi-ollama|pi-gemini|pi-or|bash} [gpu-id|all]" >&2
+    echo "usage: $0 {claude|pi-azure|pi-ollama|pi-gemini|pi-or|bash} [gpu-id|all]" >&2
     exit 1
     ;;
 esac

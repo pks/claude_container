@@ -1,0 +1,414 @@
+#!/usr/bin/env python3
+"""collab-wiki — shared notes wiki on the collab board, then git-sync.
+
+Add-only, per-agent fragments (wiki/<page>/<agent>-<nnn>.md) → zero merge conflicts,
+same invariant as collab-post/collab-say. A page is the *rendered concatenation* of
+every agent's fragments, time-sorted and attributed; nothing rendered is committed, so
+there is no shared file to conflict on (same trick as collab-view).
+
+Each agent may also keep ONE owned digest per page (`_summary-<agent>.md`, via
+--summary) which it is free to rewrite — still its own file, still no conflict.
+
+Env: COLLAB_DIR (default /collab)  ·  COLLAB_AGENT (e.g. agent-0)
+
+  collab-wiki list
+  collab-wiki read length-modeling
+  collab-wiki write length-modeling --title "LNP hurts below 20 BLEU" \
+      --msg "len-beam 5 + LNP a=1 cost 0.4 at dev<20; helps only above ~23" --ref dag-glat-v3
+  collab-wiki write data-prep --file notes.md --title "dedup + len-ratio filter"
+  collab-wiki write length-modeling --summary --file digest.md   # rewrite my digest
+  collab-wiki search "length"
+  collab-wiki html /tmp/wiki                                     # static site for humans
+"""
+import argparse
+import contextlib
+import datetime
+import fcntl
+import glob
+import html
+import os
+import pathlib
+import re
+import subprocess
+import sys
+
+COLLAB_DIR = os.environ.get("COLLAB_DIR", "/collab")
+AGENT = os.environ.get("COLLAB_AGENT", "")
+WIKI = pathlib.Path(COLLAB_DIR, "wiki")
+# Page AND agent names both land in paths, so both go through this.
+NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+
+
+def die(msg):
+    print(f"collab-wiki: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def git(*a):
+    return subprocess.run(["git", "-C", COLLAB_DIR, *a], capture_output=True, text=True)
+
+
+def pull():
+    git("pull", "--rebase", "--autostash")
+
+
+def require_dir():
+    """Read side: the board must at least exist, else say so instead of 'empty'."""
+    if not pathlib.Path(COLLAB_DIR).is_dir():
+        die(f"COLLAB_DIR {COLLAB_DIR!r} does not exist "
+            "(no board mounted — this is the solo arm?)")
+
+
+def require_repo():
+    """Write side: refuse to write notes we cannot possibly share."""
+    require_dir()
+    if git("rev-parse", "--is-inside-work-tree").returncode != 0:
+        die(f"COLLAB_DIR {COLLAB_DIR!r} is not a git work tree — refusing to write "
+            "(a note written here would never reach peers)")
+
+
+@contextlib.contextmanager
+def board_lock():
+    with open(pathlib.Path(COLLAB_DIR, ".collab.lock"), "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        yield
+
+
+def commit_push(files, msg):
+    """Commit + push the agent's own files. Lock must already be held.
+
+    Returns True only if the work is actually on the remote; callers report failure
+    rather than printing success (a silently unshared note is worse than an error).
+    """
+    git("add", "--", *files)
+    staged = git("diff", "--cached", "--quiet", "--", *files).returncode != 0
+    if not staged:
+        print("collab-wiki: nothing changed — not committing", file=sys.stderr)
+        return False
+    if git("commit", "-m", msg).returncode != 0:
+        print("collab-wiki: commit failed", file=sys.stderr)
+        return False
+    for _ in range(5):
+        if git("push").returncode == 0:
+            return True
+        git("pull", "--rebase", "--autostash")
+    print("collab-wiki: push failed after retries — committed locally, NOT shared",
+          file=sys.stderr)
+    return False
+
+
+def now():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def check_name(name, what):
+    if not NAME_RE.match(name):
+        die(f"bad {what} {name!r} (allowed: a-z 0-9 . _ -, must start alphanumeric)")
+    return name
+
+
+def one_line(s):
+    """Frontmatter is line-oriented — a newline in a value forges the next field."""
+    return " ".join(str(s).split())
+
+
+def agent_from_filename(stem):
+    """Attribution fallback for fragments written by hand (no frontmatter)."""
+    if stem.startswith("_summary-"):
+        return stem[len("_summary-"):]
+    return re.sub(r"-\d+$", "", stem)
+
+
+def parse(path):
+    """Split a fragment into (meta dict, body). Frontmatter is optional."""
+    meta, body = {}, ""
+    text = pathlib.Path(path).read_text(errors="replace")
+    if text.startswith("---\n"):
+        end = text.find("\n---\n", 3)
+        if end != -1:
+            for line in text[4:end].splitlines():
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    meta[k.strip()] = v.strip()
+            body = text[end + 5:]
+        else:
+            body = text
+    else:
+        body = text
+    meta.setdefault("agent", agent_from_filename(pathlib.Path(path).stem))
+    return meta, body.strip("\n")
+
+
+def fragments(page):
+    """Owned digests first (by agent), then dated fragments oldest-first."""
+    d = WIKI / page
+    if not d.is_dir():
+        return [], []
+    summaries, frags = [], []
+    for p in sorted(glob.glob(str(d / "*.md"))):
+        item = (p, *parse(p))
+        (summaries if pathlib.Path(p).name.startswith("_summary-") else frags).append(item)
+    frags.sort(key=lambda it: (it[1].get("ts", ""), it[0]))
+    return summaries, frags
+
+
+def pages():
+    if not WIKI.is_dir():
+        return []
+    return sorted(p.name for p in WIKI.iterdir() if p.is_dir() and glob.glob(str(p / "*.md")))
+
+
+def log_read(what):
+    """Read telemetry stays LOCAL (untracked) — no commit, no push storm.
+
+    The harness collects each agent's clone at the wire; that is the collaboration
+    signal the experiment wants, without polluting the shared history.
+    """
+    try:
+        with open(pathlib.Path(COLLAB_DIR, ".wiki-reads.log"), "a") as f:
+            f.write(f"{now()}\t{AGENT or '-'}\t{what}\n")
+    except OSError:
+        pass
+
+
+# ---------------------------------------------------------------- verbs
+
+
+def cmd_list(a):
+    require_dir()
+    if not a.no_pull:
+        pull()
+    log_read("list")
+    ps = pages()
+    if not ps:
+        print("(wiki empty — collab-wiki write <page> --msg ... to start one)")
+        return
+    print(f"=== Wiki — {len(ps)} pages ===")
+    print(f"{'page':<28}  {'frags':>5}  {'authors':>7}  {'updated':<20}  title-of-latest")
+    print(f"{'-'*28}  {'-'*5}  {'-'*7}  {'-'*20}  {'-'*30}")
+    for name in ps:
+        summaries, frags = fragments(name)
+        allf = summaries + frags
+        authors = {m.get("agent", "?") for _, m, _ in allf}
+        last = frags[-1][1] if frags else (summaries[-1][1] if summaries else {})
+        star = "*" if summaries else " "
+        print(f"{name+star:<28}  {len(allf):>5}  {len(authors):>7}  "
+              f"{last.get('ts', '-'):<20}  {last.get('title', '')[:30]}")
+    print("\n* = has an owned digest (_summary-<agent>.md)")
+
+
+def cmd_read(a):
+    require_dir()
+    if not a.no_pull:
+        pull()
+    page = check_name(a.page, "page name")
+    log_read(f"read:{page}")
+    summaries, frags = fragments(page)
+    if not summaries and not frags:
+        print(f"collab-wiki: no page {page!r} (collab-wiki list)", file=sys.stderr)
+        sys.exit(1)
+    if a.raw:
+        for _, _, body in summaries + frags:
+            print(body + "\n")
+        return
+    print(f"=== wiki/{page} — {len(summaries) + len(frags)} fragments ===\n")
+    for _, m, body in summaries:
+        print(f"--- DIGEST (owner: {m.get('agent','?')}, {m.get('ts','-')}) ---")
+        print(body + "\n")
+    for _, m, body in frags:
+        head = f"--- {m.get('agent','?')} · {m.get('ts','-')}"
+        if m.get("title"):
+            head += f" · {m['title']}"
+        if m.get("refs"):
+            head += f" · [{m['refs']}]"
+        print(head + " ---")
+        print(body + "\n")
+
+
+def cmd_write(a):
+    if not AGENT:
+        die("COLLAB_AGENT not set")
+    # AGENT becomes a path component — validate it like a page name, or
+    # COLLAB_AGENT=../../shared/x writes outside wiki/ and the add silently misses.
+    agent = check_name(AGENT, "COLLAB_AGENT")
+    page = check_name(a.page, "page name")
+    if not a.msg and not a.file:
+        die("need --msg or --file")
+    if a.file:
+        try:
+            body = pathlib.Path(a.file).read_text()
+        except OSError as e:
+            die(f"--file {a.file}: {e.strerror}")
+    else:
+        body = a.msg
+    require_repo()
+
+    meta = [f"page: {page}", f"agent: {agent}", f"ts: {now()}"]
+    if a.title:
+        meta.append(f"title: {one_line(a.title)}")
+    if a.ref:
+        meta.append(f"refs: {one_line(a.ref)}")
+    text = "---\n" + "\n".join(meta) + "\n---\n\n" + body.strip("\n") + "\n"
+
+    # Everything under the lock: pull first, then pick the sequence number, so two
+    # concurrent writes by the same agent cannot land on the same <agent>-NNN.md.
+    with board_lock():
+        git("pull", "--rebase", "--autostash")
+        d = WIKI / page
+        d.mkdir(parents=True, exist_ok=True)
+        if a.summary:
+            target = d / f"_summary-{agent}.md"
+            verb = "digest"
+        else:
+            used = {pathlib.Path(p).name for p in glob.glob(str(d / f"{agent}-*.md"))}
+            seq = 0
+            while f"{agent}-{seq:03d}.md" in used:
+                seq += 1
+            target = d / f"{agent}-{seq:03d}.md"
+            verb = "frag"
+        target.write_text(text)
+        rel = f"wiki/{page}/{target.name}"
+        ok = commit_push([rel], f"wiki({agent}): {verb} {page}/{target.name}")
+
+    if not ok:
+        print(f"collab-wiki: {rel} written locally but NOT shared", file=sys.stderr)
+        sys.exit(1)
+    print(f"collab-wiki: wrote {rel}")
+
+
+def cmd_search(a):
+    require_dir()
+    if not a.no_pull:
+        pull()
+    log_read(f"search:{a.term}")
+    term = a.term.lower()
+    hits = 0
+    for name in pages():
+        summaries, frags = fragments(name)
+        for p, m, body in summaries + frags:
+            if term in body.lower() or term in m.get("title", "").lower():
+                for i, line in enumerate(body.splitlines(), 1):
+                    if term in line.lower():
+                        print(f"{name}/{pathlib.Path(p).name}:{i}: {line.strip()[:120]}")
+                        hits += 1
+    if not hits:
+        print(f"(no match for {a.term!r})")
+
+
+CSS = """
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#666;--line:#e2e2e2;--card:#fafafa;--acc:#0b62c4}
+@media(prefers-color-scheme:dark){:root{--bg:#16181c;--fg:#e6e6e6;--mut:#9aa0a6;
+--line:#2c3038;--card:#1d2026;--acc:#6fb3ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+font:15px/1.6 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:60rem;margin:0 auto;padding:2rem 1.25rem 4rem}
+h1{font-size:1.5rem;margin:0 0 .25rem}h2{font-size:1.15rem;margin:2rem 0 .5rem}
+a{color:var(--acc)}.mut{color:var(--mut);font-size:.85rem}
+nav a{display:inline-block;margin:0 .6rem .4rem 0}
+.frag{border:1px solid var(--line);border-left:3px solid var(--acc);background:var(--card);
+border-radius:6px;padding:.75rem 1rem;margin:.9rem 0}
+.frag h3{margin:0 0 .35rem;font-size:.95rem}
+.frag .meta{color:var(--mut);font-size:.8rem;margin-bottom:.5rem}
+.digest{border-left-color:#c9a227}
+pre{overflow-x:auto;background:var(--bg);border:1px solid var(--line);
+border-radius:4px;padding:.6rem}
+table{border-collapse:collapse;width:100%;display:block;overflow-x:auto}
+td,th{border-bottom:1px solid var(--line);padding:.35rem .6rem;text-align:left}
+"""
+
+
+def cmd_html(a):
+    require_dir()
+    if not a.no_pull:
+        pull()
+    out = pathlib.Path(a.outdir)
+    out.mkdir(parents=True, exist_ok=True)
+    ps = pages()
+    nav = " ".join(f'<a href="{html.escape(p)}.html">{html.escape(p)}</a>' for p in ps)
+
+    def shell(title, body):
+        return (f"<!doctype html><html><head><meta charset=utf-8>"
+                f"<meta name=viewport content='width=device-width,initial-scale=1'>"
+                f"<title>{html.escape(title)}</title><style>{CSS}</style></head>"
+                f"<body><div class=wrap>{body}</div></body></html>")
+
+    rows = []
+    for name in ps:
+        summaries, frags = fragments(name)
+        allf = summaries + frags
+        authors = sorted({m.get("agent", "?") for _, m, _ in allf})
+        last = (frags[-1][1] if frags else allf[-1][1]).get("ts", "-")
+        rows.append(f"<tr><td><a href='{html.escape(name)}.html'>{html.escape(name)}</a></td>"
+                    f"<td>{len(allf)}</td><td>{html.escape(', '.join(authors))}</td>"
+                    f"<td>{html.escape(last)}</td></tr>")
+
+        blocks = []
+        for _, m, body in summaries:
+            blocks.append(
+                f"<div class='frag digest'><h3>Digest — {html.escape(m.get('agent','?'))}</h3>"
+                f"<div class=meta>{html.escape(m.get('ts','-'))}</div>"
+                f"<pre>{html.escape(body)}</pre></div>")
+        for _, m, body in frags:
+            t = m.get("title") or "(untitled)"
+            refs = f" · refs: {html.escape(m['refs'])}" if m.get("refs") else ""
+            blocks.append(
+                f"<div class=frag><h3>{html.escape(t)}</h3>"
+                f"<div class=meta>{html.escape(m.get('agent','?'))} · "
+                f"{html.escape(m.get('ts','-'))}{refs}</div>"
+                f"<pre>{html.escape(body)}</pre></div>")
+        (out / f"{name}.html").write_text(shell(
+            f"wiki/{name}",
+            f"<h1>{html.escape(name)}</h1>"
+            f"<p class=mut><a href='index.html'>&larr; index</a> · "
+            f"{len(allf)} fragments</p><nav>{nav}</nav>" + "".join(blocks)))
+
+    (out / "index.html").write_text(shell(
+        "collab wiki",
+        "<h1>collab wiki</h1>"
+        f"<p class=mut>{len(ps)} pages · rendered {html.escape(now())} · "
+        "source: collab_v0.git <code>wiki/</code></p>"
+        "<table><tr><th>page</th><th>frags</th><th>authors</th><th>updated</th></tr>"
+        + "".join(rows) + "</table>"))
+    print(f"collab-wiki: wrote {len(ps) + 1} files to {out}")
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="collab-wiki")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    # --no-pull on the read-side verbs, after the verb (same feel as collab-view).
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--no-pull", action="store_true",
+                        help="render what's local, skip git pull")
+
+    sub.add_parser("list", parents=[common], help="list pages").set_defaults(fn=cmd_list)
+
+    r = sub.add_parser("read", parents=[common], help="render one page")
+    r.add_argument("page")
+    r.add_argument("--raw", action="store_true", help="bodies only, no attribution headers")
+    r.set_defaults(fn=cmd_read)
+
+    w = sub.add_parser("write", help="append your own fragment (or rewrite your digest)")
+    w.add_argument("page")
+    w.add_argument("--msg", default="")
+    w.add_argument("--file", default="")
+    w.add_argument("--title", default="")
+    w.add_argument("--ref", default="", help="related run/recipe id")
+    w.add_argument("--summary", action="store_true", help="write/overwrite MY digest for this page")
+    w.set_defaults(fn=cmd_write)
+
+    s = sub.add_parser("search", parents=[common], help="grep page bodies + titles")
+    s.add_argument("term")
+    s.set_defaults(fn=cmd_search)
+
+    h = sub.add_parser("html", parents=[common], help="render a static site for humans")
+    h.add_argument("outdir")
+    h.set_defaults(fn=cmd_html)
+
+    a = ap.parse_args()
+    a.fn(a)
+
+
+if __name__ == "__main__":
+    main()

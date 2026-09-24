@@ -4,7 +4,8 @@
 Per-agent shard (leaderboard/<agent>.jsonl) → 4 writers never touch the same file →
 zero merge conflicts. Agents call this after every dev eval.
 
-Env: COLLAB_DIR (default /collab)  ·  COLLAB_AGENT (e.g. agent-0)  ·  COLLAB_GPU (optional tag)
+Env: COLLAB_DIR (default /collab)  ·  COLLAB_AGENT (e.g. agent-0)  ·  COLLAB_GPU / MTBENCH_GPU
+     (optional card tag; MTBENCH_GPU is the name the plan points agents at)
 
   collab-post --run dag-glat-v3 --arch DAG --dev-bleu 22.9 \
               --params-m 63 --T 1 --infer-ms 4.2 --recipe code/agent-2/dag-glat-v3
@@ -50,7 +51,10 @@ def main():
     ap.add_argument("--T", type=int, dest="decode_T", help="decode iterations / passes")
     ap.add_argument("--infer-ms", type=float, dest="infer_ms_sent", help="ms/sentence (GPU-tagged)")
     ap.add_argument("--throughput", type=float, dest="throughput_sent_s")
-    ap.add_argument("--gpu", default=os.environ.get("COLLAB_GPU", ""))
+    # MTBENCH_GPU is the arm-neutral name the plan points agents at; COLLAB_GPU predates
+    # it and is still set in the collab arm, so accept either.
+    ap.add_argument("--gpu", default=os.environ.get("COLLAB_GPU")
+                                    or os.environ.get("MTBENCH_GPU", ""))
     ap.add_argument("--recipe", default="", help="pointer into code/<agent>/... to reproduce")
     ap.add_argument("--notes", default="")
     a = ap.parse_args()
