@@ -32,6 +32,11 @@ IMAGE=mtbench-container SEED=1 DECODE_BUDGET=3600 ./score.sh <state>/workspace/s
 | `../ops/bench-egress.sh` | launcher: egress lock + compute-time budget |
 | `../ops/host-resume/` | generic preempt-resume unit |
 
+**Results are not kept in this repo.** The run log — per-run test BLEU, inference
+cost, cohort provenance and findings — lives in the study repo at
+`diffusemt_meta/docs/bench/RESULTS-runs.md`. This repo carries the mechanism only, so
+it stays reusable for a task that isn't this one.
+
 The **task card is not baked into the image** — `bench-stage`+`seed` drop it into
 `$STATE_DIR/workspace/doc/PLAN.md` (which the `/workspace` bind-mount would shadow
 anyway; it lives in durable state that survives preemption). Change the task = edit
