@@ -1,6 +1,15 @@
 #!/bin/bash
 set -eu
 
+# Background the Mithril spot-interruption watcher when the signal mount is
+# present. Without it the watcher has nothing to do, so on every other host
+# this is a no-op.
+if [ -d /opt/mithril ]; then
+  mkdir -p /workspace/log
+  /usr/local/bin/mithril-watch.sh >>/workspace/log/mithril-watch.log 2>&1 &
+  echo "[entrypoint] mithril watcher started (pid $!)"
+fi
+
 # Switch pi's settings.json based on the active model. GPT-5 series has a
 # 272K-input pricing cliff (2x input / 1.5x output above that), so it gets a
 # profile that compacts well before that line; everything else uses the

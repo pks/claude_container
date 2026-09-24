@@ -21,5 +21,18 @@
   },
   "enabledPlugins": {
     "caveman@caveman": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/local/bin/mithril-hook.sh"
+          }
+        ]
+      }
+    ]
   }
 }

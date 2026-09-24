@@ -210,6 +210,12 @@ done
 # must be there in both arms, so it is forwarded independently of the collab block below.
 [ -n "${MTBENCH_GPU:-}" ] && ENVS+=(-e "MTBENCH_GPU=$MTBENCH_GPU")
 
+# Mithril spot signal — the in-container watcher polls it and SIGINTs the agent on
+# preemption. Self-disabling: on any other host /opt/mithril does not exist, nothing is
+# mounted and the watcher never starts. See "Preemption handling" in the README.
+[ -d /opt/mithril ] \
+  && MOUNTS+=(-v /opt/mithril:/opt/mithril:ro)
+
 # Collaboration (ops/collab-launch.sh): if COLLAB_HOST_DIR is set, mount the agent's
 # shared-blackboard clone at /collab and forward its identity so collab-{post,say,view}
 # work inside the container. No-op otherwise (solo arm / non-collab runs).

@@ -30,7 +30,9 @@ which is what keeps the harness task-agnostic.
   `ops/host-resume/` holds the host-side systemd kit (`bench-resume.service`,
   `bench-resume.sh`, `install.sh`, `uninstall.sh`) that remounts durable state
   and re-launches the agent on every boot, so a preemptible host comes back up
-  unattended.
+  unattended. `ops/mithril-*` and `ops/mithril-host/` are an optional fast path
+  for providers that signal preemption in advance — inert unless `/opt/mithril`
+  is present; see "Preemption handling".
 - `models.json` — pi-coding-agent model registry, copied to `~/.pi/agent/models.json`.
 - `pi-settings/` — pi-coding-agent settings profiles (retry + compaction).
   `entrypoint.sh` picks `settings.gpt.json` when `PI_MODEL=gpt-*` (compacts
@@ -224,9 +226,7 @@ flags. Explicit env vars or positional args still override.
 
 ### Preemption handling
 
-This branch carries no provider-specific preemption watcher — the `mithril`
-extension and the `ops/mithril-*` scripts exist only on `main`. Preemption is
-handled generically instead:
+Handled generically, so it works on any preemptible host:
 
 - **The agent banks its own state.** The `checkpoint` pi extension nudges it
   every ~30 min to refresh `/workspace/STATUS.md` and commit, so whatever is on
@@ -235,6 +235,20 @@ handled generically instead:
   wall clock, so downtime is free and a reclaim does not eat the budget.
 - **The host comes back by itself.** `ops/host-resume/` re-launches the agent on
   boot (below).
+
+On top of that there is an **optional Mithril-specific fast path**, for providers
+that publish an advance preemption signal. It is **inert unless `/opt/mithril`
+exists**, which is every other host:
+
+- `run.sh` bind-mounts `/opt/mithril` read-only when the directory is present.
+- `ops/entrypoint.sh` then backgrounds `ops/mithril-watch.sh`, which polls the
+  signal file and SIGINTs the agent on preemption.
+- `ops/mithril-hook.sh` (a Claude Code `PreToolUse` hook, registered in
+  `ops/claude-settings.json`) and the `mithril` pi extension nudge the agent to
+  commit, write `STATUS.md`, ack via `touch /workspace/.shutdown-acked`, and exit.
+  Both exit immediately when the signal file is absent.
+- `ops/mithril-host/` is the older host-side systemd kit for that provider,
+  superseded by the generic `ops/host-resume/` below; kept for reference.
 
 ### Auto-resume after a preemption reboot (systemd)
 

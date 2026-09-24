@@ -183,16 +183,17 @@ RUN install -m 0644 /etc/pi-settings/settings.default.json \
 # interactive trust prompt (agent runs headless). trust-manager keys on the
 # canonical cwd; the container always runs pi with cwd=/workspace.
 RUN printf '{\n  "/workspace": true\n}\n' > /home/${USERNAME}/.pi/agent/trust.json
-# Claude Code settings: enables the caveman plugin installed above. No PreToolUse
-# hook here — the mithril spot-interruption hook that main/ carries does not exist
-# on this branch, and a settings.json pointing at a missing command would fire on
-# every tool call.
+# Claude Code settings: enables the caveman plugin installed above, and registers the
+# PreToolUse hook that nudges the agent to checkpoint on spot preemption. The hook
+# script is copied in below, so the command always exists; it short-circuits when
+# /opt/mithril is absent, which is every non-Mithril host.
 COPY --chown=${USER_UID}:${USER_GID} ops/claude-settings.json /home/${USERNAME}/.claude/settings.json
 COPY --chown=${USER_UID}:${USER_GID} pi-extensions /tmp/pi-extensions
 RUN pi install /tmp/pi-extensions/azure-anthropic \
  && pi install /tmp/pi-extensions/azure-openai \
  && pi install /tmp/pi-extensions/gemini \
  && pi install /tmp/pi-extensions/checkpoint \
+ && pi install /tmp/pi-extensions/mithril \
  && pi install /tmp/pi-extensions/resources
 
 # Entrypoint wrapper (pi settings-profile selection + `exec "$@"`). The bench
@@ -206,7 +207,13 @@ COPY ops/proxy/tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
 # Collaboration helpers (shared blackboard) — on PATH for the agent.
 COPY ops/collab/collab-post ops/collab/collab-say ops/collab/collab-view \
      ops/collab/collab-wiki /usr/local/bin/
+# Mithril spot-preemption kit. Inert unless /opt/mithril is mounted (see run.sh).
+COPY ops/mithril-watch.sh /usr/local/bin/mithril-watch.sh
+COPY ops/mithril-hook.sh /usr/local/bin/mithril-hook.sh
+COPY ops/mithril-nudge.txt /usr/local/share/mithril-nudge.txt
 RUN chmod 0755 /usr/local/bin/entrypoint.sh /usr/local/bin/proxy-entrypoint.sh \
       /usr/local/bin/collab-post /usr/local/bin/collab-say /usr/local/bin/collab-view \
-      /usr/local/bin/collab-wiki
+      /usr/local/bin/collab-wiki \
+      /usr/local/bin/mithril-watch.sh /usr/local/bin/mithril-hook.sh \
+ && chmod 0644 /usr/local/share/mithril-nudge.txt
 USER ${USER_UID}:${USER_GID}
