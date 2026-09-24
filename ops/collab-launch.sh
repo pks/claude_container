@@ -28,22 +28,22 @@
 # → OpenAI/Azure (default gpt-5.6-sol). There is no separate pi-openai profile.
 # Set exactly one key (plus AZURE_BASE_URL) in the launching shell or .env.
 #
-#   # 1. on titan — Claude Code + opus-5 on the subscription:
+#   # 1. on the git host — Claude Code + opus-5 on the subscription:
 #   ARM=collab PROFILE=claude IMAGE=collab-container WALL_HOURS=none \
-#     GIT_URL=git://10.10.20.21/collab.git \
+#     GIT_URL=git://$GIT_HOST/collab.git \
 #     COHORT="agent-0 agent-1 agent-2 agent-3" \
 #     ops/collab-launch.sh agent-0:0:TITAN agent-1:1:TITAN
 #
-#   # 2. on titan2 — same, pointing at titan's LAN address for the git host:
+#   # 2. on the second host — same, pointing at the git host:
 #   ARM=collab PROFILE=claude IMAGE=collab-container WALL_HOURS=none \
-#     GIT_URL=git://10.10.20.21/collab.git \
+#     GIT_URL=git://$GIT_HOST/collab.git \
 #     COHORT="agent-0 agent-1 agent-2 agent-3" \
 #     ops/collab-launch.sh agent-2:0:A6000 agent-3:1:A6000
 #     # COHORT = the WHOLE cohort (both hosts), same value on each; it is what the plan
 #     # tells each agent about its peers. Omit it and the plan only names this host's two.
-#     # NOTE: GIT_URL host = the git host (titan)'s address as seen from THIS host.
-#     # titan=10.10.20.21, titan2=10.10.20.24 on the LAN. The Tailscale name
-#     # titan2.tailcd9e.ts.net refuses :22 — use the LAN addresses.
+#     # NOTE: GIT_URL host = the git host's address AS SEEN FROM THIS host, so it differs
+#     # per host; use LAN addresses (a mesh-VPN name may not route :22). This repo keeps
+#     # no site addresses — they live with the study, in collab/COLLAB-EXPERIMENT.md.
 #
 #   # a pi lane instead (metered API key):
 #   ARM=collab PROFILE=pi-azure ANTHROPIC_API_KEY=... AZURE_BASE_URL=... \

@@ -75,16 +75,15 @@ solo; every CLI flag the overlay names exists in `ops/collab/*`; `bash -n` clean
    `GIT_URL`'s basename is derived from `COLLAB_BARE`, so the two cannot drift apart; override
    only the host part. To render the pilot's wiki:
    `make wiki COLLAB_BARE=/storage/archive/.../collab-v0_pilot/blackboard.git`.
-3. **git-daemon is bound to docker0 only — and the one running now serves a deleted path.**
-   Still alive as PIDs 260232/260234 with
-   `--listen=10.200.0.1 --base-path=/home/pks/exp/diffusemt_meta --strict-paths --export-all
-   --enable=receive-pack /home/pks/exp/diffusemt_meta/collab_v0.git`. That repo was archived on
-   2026-09-24, so the daemon now serves nothing: a clone against it fails. **Kill it and restart
-   via `ops/collab-launch.sh daemon`** once the new blackboard exists — the launcher derives
-   `--base-path` from `COLLAB_BARE`, which now scopes it to `.work/` instead of the whole study
-   repo.
+3. **git-daemon needs rebinding before a cross-host cohort.** The long-running one from
+   2026-09-08 was **killed on 2026-09-24**: it was still serving `<study-repo>/collab_v0.git`,
+   which had just been archived, so it answered nothing. Nothing listens on 9418 now. Start a
+   fresh one with `ops/collab-launch.sh daemon` once the new blackboard exists — the launcher
+   derives `--base-path` from `COLLAB_BARE`, so it is scoped to `.work/` rather than the whole
+   study repo, which the old one had.
 
-   Binding: reachable from containers on titan, invisible to titan2 (10.10.20.24). A titan-only
+   Binding: the old one was on docker0, reachable from containers on titan, invisible to titan2.
+   Set `DAEMON_LISTEN` to whatever the agents reach the host on. A titan-only
    2-agent run works; a 4-agent cohort does not until it is rebound. **Security note:**
    `--enable=receive-pack` with `--export-all` is *anonymous unauthenticated write*. On docker0
    that is container-local; rebinding to bond0 or 0.0.0.0 exposes it to the whole LAN. Scope it to
@@ -103,7 +102,7 @@ ops/collab-launch.sh daemon
 
 # titan, collab arm, Claude Code on the host subscription
 ARM=collab PROFILE=claude IMAGE=collab-container WALL_HOURS=none \
-  GIT_URL=git://10.200.0.1/collab.git \
+  GIT_URL=git://$GIT_HOST/collab.git \
   ops/collab-launch.sh agent-0:0:TITAN agent-1:1:TITAN
 
 # solo control — same everything, no /collab, plan = the task file alone

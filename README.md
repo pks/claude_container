@@ -1,11 +1,15 @@
 # Claude Container
 
-Containerized harness for autonomously running a machine translation experiments under an LLM coding agent — Claude Code or [pi-coding-agent](https://github.com/earendil-works/pi-mono).
+Containerized harness for running long-horizon ML experiments under an LLM coding agent —
+Claude Code or [pi-coding-agent](https://github.com/earendil-works/pi-mono). It supplies the
+container, GPU wiring, durable state, preemption handling, egress control and a compute-time
+budget. The task is staged in from outside, so nothing here is tied to a particular
+experiment.
 
 The agent is dropped into `/workspace` inside the container and told to carry out
-`plan/PLAN.md`, which defines the research task (match Transformer-base quality with a
-pure diffusion model), the data/eval setup, and the iteration protocol. That file is
-staged in before a run — it is not part of this repo (see `plan/` under Layout).
+`plan/PLAN.md` — the research task, the data/eval setup and the iteration protocol. That
+file is staged in before a run and is **not** part of this repo (see `plan/` under Layout),
+which is what keeps the harness task-agnostic.
 
 ## Layout
 
@@ -20,7 +24,9 @@ staged in before a run — it is not part of this repo (see `plan/` under Layout
 - `ops/` — `entrypoint.sh` (started inside the container), `bench-egress.sh`
   (egress lock + compute-time budget), `bench-cost.py` (sums a run's token
   spend from the persisted pi session), `proxy/` (the allowlist proxy sidecar)
-  and `collab/` + `collab-launch.sh` (the collaborative-agents toolkit).
+  and `collab/` + `collab-launch.sh` (multi-agent launcher: one agent per GPU,
+  each with its own state dir and tmux session, optionally sharing a git
+  blackboard mounted at `/collab`).
   `ops/host-resume/` holds the host-side systemd kit (`bench-resume.service`,
   `bench-resume.sh`, `install.sh`, `uninstall.sh`) that remounts durable state
   and re-launches the agent on every boot, so a preemptible host comes back up
@@ -44,18 +50,14 @@ staged in before a run — it is not part of this repo (see `plan/` under Layout
   `make seed` reads `plan/PLAN.md` (the task handed to the agent) and, if present,
   `plan/HOST.md` (that host's GPU notes, staged to `doc/HOST.md`). Both are
   assembled or copied in before seeding, and a clean clone has neither. Sources:
-  the study repo's `plan/` (`PLAN-v*.md`, `HOST-<host>.md`, all version-controlled
-  there) for hand-written plans, or `ops/collab-launch.sh` for the collab arm,
-  which builds `plan/PLAN.md` from `collab/` at launch.
-  The task and protocol files the launcher assembles — `TASK-open.md` /
-  `TASK-nat.md` / `TASK-diffusion.md` (pick with `TASK_DOC=`) plus the
-  `PLAN-collab.md` overlay — are **not** here either: they define the experiment,
-  so they live in the study repo's `collab/`. `COLLAB_DIR` points at it and
-  defaults to a sibling checkout.
-- `docs/` — prose documentation. [`docs/HANDOFF.md`](docs/HANDOFF.md) is the
-  entry point for the collaborative-agents experiment (state, blockers, launch
-  commands, open decisions). Its design spec is **not** here — study design lives
-  in the study repo, at `diffusemt_meta/collab/COLLAB-EXPERIMENT.md`.
+  a plan directory kept outside this repo (`PLAN-*.md`, `HOST-<host>.md`), or
+  `ops/collab-launch.sh`, which assembles `plan/PLAN.md` at launch.
+  The files that launcher assembles — a task doc (`TASK_DOC`) plus an optional
+  overlay appended for the sharing arm (`OVERLAY_DOC`) — are **not** here either:
+  they define an experiment. `COLLAB_DIR` points at the directory holding them
+  and defaults to a sibling checkout.
+- `docs/` — prose documentation, including a `HANDOFF.md` when a run is in
+  flight. Anything describing *what is being studied* belongs outside this repo.
 
 ## Quick start
 
@@ -65,11 +67,10 @@ End-to-end on a fresh host (from inside this repo):
 # one-time per host
 make image                                # build the image (auto-detects GPU arch)
 
-# per attempt — stage the plan in from the study repo (PLAN_SRC below is
-# wherever diffusemt_meta/plan is checked out; ../plan when nested in it)
+# per attempt — stage the plan in ($PLAN_SRC = wherever the plan dir lives)
 mkdir -p plan
-cp $PLAN_SRC/PLAN-v3.md   plan/PLAN.md    # whichever PLAN to ship to the agent
-cp $PLAN_SRC/HOST-titan.md plan/HOST.md   # or HOST-mithril.md, or skip
+cp "$PLAN_SRC/PLAN-<version>.md" plan/PLAN.md   # the task to ship to the agent
+cp "$PLAN_SRC/HOST-<host>.md"    plan/HOST.md   # per-machine notes, or skip
 cat > .env <<'EOF'
 AZURE_BASE_URL=https://...
 OPENAI_API_KEY=...
@@ -86,7 +87,7 @@ make run                                  # PROFILE/GPU/THINKING/PI_MODEL filled
 sudo bash ops/host-resume/install.sh --start
 ```
 
-For parallel runs on the same host (e.g. titan2 cards 0 and 1), give each
+For parallel runs on one host (e.g. cards 0 and 1), give each
 its own `STATE_DIR` and `GPU=`:
 
 ```sh
@@ -109,23 +110,22 @@ make seed                   # populate ./state/{workspace,home} from the image
 (installed tools, agent configs, etc.), `make reseed` wipes `$STATE_DIR`
 and re-runs the seed.
 
-`plan/HOST.md` (optional) is copied to `workspace/doc/HOST.md` if present. The
-PLAN tells the agent to read it for per-machine specifics. The per-host files are
-version-controlled in the **study repo's** `plan/` (its own git repo), not here:
+`plan/HOST.md` (optional) is copied to `workspace/doc/HOST.md` if present, and the
+PLAN tells the agent to read it for per-machine specifics — the kind of thing an
+agent cannot discover but must plan around: a power cap on a schedule, an
+unsupported dtype, spot-preemption behaviour and what survives it.
 
-- `HOST-titan.md` / `HOST-titan2.md` — cron-managed power cap schedule and card
-  specifics for titan / titan2
-- `HOST-mithril.md` — Mithril spot-preemption behavior and state-survival contract
-
-Copy the right one into `plan/HOST.md` before `make seed`. Staging in rather than
-checking the plan repo out here is deliberate: this repo stays task-agnostic, and
-per-host choices can't leak into the plan repo's history.
+Keep one `HOST-<host>.md` per machine, each describing only that machine, in the
+same external plan directory as the PLAN files. One card per doc: an agent told
+about two GPUs when it has one will plan for the wrong throughput.
 
 ```sh
 mkdir -p plan
-cp $PLAN_SRC/HOST-mithril.md plan/HOST.md   # on a Mithril spot instance
-cp $PLAN_SRC/HOST-titan.md   plan/HOST.md   # on titan / titan2
+cp "$PLAN_SRC/HOST-$(hostname -s).md" plan/HOST.md
 ```
+
+Staging in rather than checking the plan directory out here is deliberate: it keeps
+this repo task-agnostic, and per-host choices out of the plan directory's history.
 
 ## Run
 
@@ -198,8 +198,8 @@ writes `$STATE_DIR/.config` recording how this run was launched:
 
 ```ini
 written_at=2026-06-02T11:30:00Z
-hostname=titan2
-state_dir=/home/ubuntu/exp/diffusemt/state
+hostname=gpu-host-1
+state_dir=/home/ubuntu/exp/run/state
 profile=pi-azure
 model=gpt-5.5
 thinking=xhigh
