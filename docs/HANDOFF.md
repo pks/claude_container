@@ -52,30 +52,44 @@ solo; every CLI flag the overlay names exists in `ops/collab/*`; `bash -n` clean
 
 ## 3. Blockers before a run
 
-1. **Wipe `collab_state/`.** The launcher only seeds a state dir when `workspace`/`home` are
-   missing, so relaunching `agent-0`/`agent-1` as-is gives them the **pilot's** `doc/PLAN.md`, the
-   pilot's workspace, and the pilot's `/collab` clone — the new plan never lands.
+1. ~~**Wipe `collab_state/`.**~~ **Done 2026-09-24.** The pilot's two state dirs (30 GB) were
+   archived to `/storage/archive/pks/diffusemt_meta/attempts/collab-v0_pilot/state/` and removed
+   from this repo, so there is nothing left here for the launcher to mistake for a fresh run.
+   Checksum-verified before deletion. Keep it that way: the launcher only seeds a state dir when
+   `workspace`/`home` are missing, so a leftover dir would silently hand the next agent the old
+   `doc/PLAN.md`, workspace and `/collab` clone, and the new plan would never land.
+2. ~~**Reset the blackboard.**~~ **Done 2026-09-24**, by archiving rather than resetting in place.
+   The pilot's bare repo is now
+   `/storage/archive/pks/diffusemt_meta/attempts/collab-v0_pilot/blackboard.git` (same `main`,
+   21 commits) — read it for the pilot's history, never launch into it: it holds agent-0/agent-1
+   leaderboard rows, messages, wiki fragments, and `code/agent-1/ar-base/`, an **autoregressive**
+   recipe sitting in the fork-freely dir, i.e. a ready-made paradigm violation, plus numbers from
+   a differently constrained task.
+
+   `COLLAB_BARE` now defaults to `~/exp/diffusemt_meta/.work/collab.git` — gitignored scratch, and
+   it narrows git-daemon's `--base-path` from the whole study repo to that one directory. **Create
+   it before the first launch**, and create a fresh one per run:
    ```sh
-   rm -rf collab_state/agent-0 collab_state/agent-1    # 30 GB total (16 G + 15 G)
+   git init --bare ~/exp/diffusemt_meta/.work/collab.git   # then re-seed the skeleton dirs
    ```
-   Most of it is the seeded `.venv` (~5 GB each) and `home` (~5.8 GB each), not results — but
-   check for anything worth keeping from the pilot before deleting, since the agents' training
-   output lives under `workspace/` too.
-2. **Reset the blackboard.** `~/exp/diffusemt_meta/collab_v0.git` still holds pilot content:
-   agent-0/agent-1 leaderboard rows, messages, wiki fragments, and `code/agent-1/ar-base/` — an
-   **autoregressive** recipe, i.e. a ready-made paradigm violation sitting in the fork-freely dir,
-   plus numbers from a different task.
-   ```sh
-   mv ~/exp/diffusemt_meta/collab_v0.git ~/exp/diffusemt_meta/collab_v0-pilot.git
-   git init --bare ~/exp/diffusemt_meta/collab_v0.git   # then re-seed the skeleton dirs
-   ```
-3. **git-daemon is bound to docker0 only.** Running as PID 260234 with
-   `--listen=10.200.0.1 --export-all --enable=receive-pack`: reachable from containers on titan,
-   invisible to titan2 (10.10.20.24). A titan-only 2-agent run works today; a 4-agent cohort does
-   not until it is rebound. **Security note:** `--enable=receive-pack` with `--export-all` is
-   *anonymous unauthenticated write*. On docker0 that is container-local; rebinding to bond0 or
-   0.0.0.0 exposes it to the whole LAN. Scope it to the specific address, keep `--strict-paths`,
-   and stop the daemon when the run ends.
+   `GIT_URL`'s basename is derived from `COLLAB_BARE`, so the two cannot drift apart; override
+   only the host part. To render the pilot's wiki:
+   `make wiki COLLAB_BARE=/storage/archive/.../collab-v0_pilot/blackboard.git`.
+3. **git-daemon is bound to docker0 only — and the one running now serves a deleted path.**
+   Still alive as PIDs 260232/260234 with
+   `--listen=10.200.0.1 --base-path=/home/pks/exp/diffusemt_meta --strict-paths --export-all
+   --enable=receive-pack /home/pks/exp/diffusemt_meta/collab_v0.git`. That repo was archived on
+   2026-09-24, so the daemon now serves nothing: a clone against it fails. **Kill it and restart
+   via `ops/collab-launch.sh daemon`** once the new blackboard exists — the launcher derives
+   `--base-path` from `COLLAB_BARE`, which now scopes it to `.work/` instead of the whole study
+   repo.
+
+   Binding: reachable from containers on titan, invisible to titan2 (10.10.20.24). A titan-only
+   2-agent run works; a 4-agent cohort does not until it is rebound. **Security note:**
+   `--enable=receive-pack` with `--export-all` is *anonymous unauthenticated write*. On docker0
+   that is container-local; rebinding to bond0 or 0.0.0.0 exposes it to the whole LAN. Scope it to
+   the specific address with `DAEMON_LISTEN`, keep `--strict-paths`, and stop the daemon when the
+   run ends.
 
 **Also unverified:** titan2's sshd refuses `:22` on both the LAN address and the Tailscale name,
 so its image, repo checkout, and `claude` login could not be checked from titan. Get on that box
@@ -89,7 +103,7 @@ ops/collab-launch.sh daemon
 
 # titan, collab arm, Claude Code on the host subscription
 ARM=collab PROFILE=claude IMAGE=collab-container WALL_HOURS=none \
-  GIT_URL=git://10.200.0.1/collab_v0.git \
+  GIT_URL=git://10.200.0.1/collab.git \
   ops/collab-launch.sh agent-0:0:TITAN agent-1:1:TITAN
 
 # solo control — same everything, no /collab, plan = the task file alone

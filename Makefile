@@ -20,7 +20,7 @@ THINKING  ?=
 
 # Human view of the collab notes wiki: clone/refresh the bare repo and render a
 # self-contained static site. COLLAB_BARE / WIKI_OUT override the defaults.
-COLLAB_BARE ?= $(HOME)/exp/diffusemt_meta/collab_v0.git
+COLLAB_BARE ?= $(HOME)/exp/diffusemt_meta/.work/collab.git
 WIKI_OUT    ?= $(CURDIR)/wiki-site
 wiki:
 	@if [ -d $(CURDIR)/.wiki-clone ]; then \

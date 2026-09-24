@@ -6,7 +6,7 @@
 # rendered into the plan from the agent list, not hardcoded. Cohort spanning both hosts:
 # pass COHORT="agent-0 agent-1 agent-2 agent-3" on each host so the roster is accurate.
 # Run this ONCE PER HOST with that host's agent list. Sharing = a git-daemon on the
-# git host (titan) serving collab_v0.git with anonymous receive-pack (LAN-only, no ssh
+# git host (titan) serving the blackboard bare repo with anonymous receive-pack (LAN-only, no ssh
 # keys). Each agent gets its own working clone bind-mounted at /collab; collab-{post,
 # say,view} (baked in the image) do git inside the container over the git:// origin.
 #
@@ -30,13 +30,13 @@
 #
 #   # 1. on titan — Claude Code + opus-5 on the subscription:
 #   ARM=collab PROFILE=claude IMAGE=collab-container WALL_HOURS=none \
-#     GIT_URL=git://10.10.20.21/collab_v0.git \
+#     GIT_URL=git://10.10.20.21/collab.git \
 #     COHORT="agent-0 agent-1 agent-2 agent-3" \
 #     ops/collab-launch.sh agent-0:0:TITAN agent-1:1:TITAN
 #
 #   # 2. on titan2 — same, pointing at titan's LAN address for the git host:
 #   ARM=collab PROFILE=claude IMAGE=collab-container WALL_HOURS=none \
-#     GIT_URL=git://10.10.20.21/collab_v0.git \
+#     GIT_URL=git://10.10.20.21/collab.git \
 #     COHORT="agent-0 agent-1 agent-2 agent-3" \
 #     ops/collab-launch.sh agent-2:0:A6000 agent-3:1:A6000
 #     # COHORT = the WHOLE cohort (both hosts), same value on each; it is what the plan
@@ -67,7 +67,15 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
 
-BARE="${COLLAB_BARE:-$HOME/exp/diffusemt_meta/collab_v0.git}"
+# The blackboard is per-run scratch, not repo content, so it defaults into the study
+# repo's gitignored .work/. Each run wants a FRESH bare repo: a reused one carries the
+# previous run's leaderboard, messages and code/ -- and a recipe from a differently
+# constrained task is a ready-made paradigm violation sitting in the fork-freely dir.
+#   git init --bare "$COLLAB_BARE"
+# The v0 pilot's blackboard is archived at
+# /storage/archive/pks/diffusemt_meta/attempts/collab-v0_pilot/blackboard.git -- point
+# COLLAB_BARE at it to render that run's wiki, never to launch into.
+BARE="${COLLAB_BARE:-$HOME/exp/diffusemt_meta/.work/collab.git}"
 BASE_PATH="$(dirname "$BARE")"                       # git-daemon base-path
 # collab-container, not mtbench-container: this branch's image also carries Claude
 # Code + the collab tools, and rebuilding under the bench name would overwrite the
@@ -96,7 +104,9 @@ case "$WALL_HOURS" in
 esac
 STAGGER="${STAGGER:-1200}"                           # seconds between agent starts (cold-start anti-dup)
 STATE_BASE="${STATE_BASE:-$REPO/collab_state}"
-GIT_URL="${GIT_URL:-git://127.0.0.1/collab_v0.git}"  # collab arm only
+GIT_URL="${GIT_URL:-git://127.0.0.1/$(basename "$BARE")}"  # collab arm only; basename
+                                                     # tracks COLLAB_BARE so the two
+                                                     # can't drift apart
 
 # ---- daemon mode: serve the bare repo (run once on titan) --------------------
 # SECURITY: --export-all --enable=receive-pack = anonymous, unauthenticated
@@ -105,7 +115,12 @@ GIT_URL="${GIT_URL:-git://127.0.0.1/collab_v0.git}"  # collab arm only
 # To restrict, set DAEMON_LISTEN to the single trusted IP the agents reach the
 # host on (e.g. the Tailscale addr), and stop the daemon when the run ends.
 if [ "${1:-}" = "daemon" ]; then
-  [ -d "$BARE" ] || { echo "no bare repo at $BARE (git init --bare it first)" >&2; exit 1; }
+  [ -d "$BARE" ] || {
+    echo "no bare repo at $BARE" >&2
+    echo "  Each run needs a fresh blackboard:  git init --bare \"$BARE\"" >&2
+    echo "  (the v0 pilot's is archived under attempts/collab-v0_pilot/blackboard.git" >&2
+    echo "   -- for reading that run's history, not for launching into)" >&2
+    exit 1; }
   LISTEN_ARG=()
   [ -n "${DAEMON_LISTEN:-}" ] && LISTEN_ARG=(--listen="$DAEMON_LISTEN")
   echo "collab: git-daemon serving $BASE_PATH (anonymous receive-pack, ${DAEMON_LISTEN:-0.0.0.0})" >&2
