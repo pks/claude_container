@@ -3,8 +3,9 @@
 Containerized harness for autonomously running a machine translation experiments under an LLM coding agent — Claude Code or [pi-coding-agent](https://github.com/earendil-works/pi-mono).
 
 The agent is dropped into `/workspace` inside the container and told to carry out
-[`plan/PLAN.md`](plan/PLAN.md), which defines the research task (match Transformer-base
-quality with a pure diffusion model), the data/eval setup, and the iteration protocol.
+`plan/PLAN.md`, which defines the research task (match Transformer-base quality with a
+pure diffusion model), the data/eval setup, and the iteration protocol. That file is
+staged in before a run — it is not part of this repo (see `plan/` under Layout).
 
 ## Layout
 
@@ -16,14 +17,14 @@ quality with a pure diffusion model), the data/eval setup, and the iteration pro
   populates a host-persistent state directory from the image.
 - `run.sh` — launches the container under one of several agent profiles
   (see below). Auto-detects whether to resume an existing session or start fresh.
-- `ops/` — `entrypoint.sh` (started inside the container), `mithril-watch.sh`
-  (Mithril spot-preemption watcher), `mithril-hook.sh` (Claude Code PreToolUse
-  hook that nudges the agent to checkpoint when preemption is signaled), and
-  `claude-settings.json` registering the hook. `ops/mithril-host/` holds the
-  host-side systemd kit (`home-ubuntu-exp.mount`, `diffusemt-resume.service`,
-  `resume.sh`, `install.sh`) that auto-mounts the labelled `exp` volume and
-  re-launches the agent in a detached tmux session on every boot — used on
-  Mithril spot nodes so a relocation comes back up unattended.
+- `ops/` — `entrypoint.sh` (started inside the container), `bench-egress.sh`
+  (egress lock + compute-time budget), `bench-cost.py` (sums a run's token
+  spend from the persisted pi session), `proxy/` (the allowlist proxy sidecar)
+  and `collab/` + `collab-launch.sh` (the collaborative-agents toolkit).
+  `ops/host-resume/` holds the host-side systemd kit (`bench-resume.service`,
+  `bench-resume.sh`, `install.sh`, `uninstall.sh`) that remounts durable state
+  and re-launches the agent on every boot, so a preemptible host comes back up
+  unattended.
 - `models.json` — pi-coding-agent model registry, copied to `~/.pi/agent/models.json`.
 - `pi-settings/` — pi-coding-agent settings profiles (retry + compaction).
   `entrypoint.sh` picks `settings.gpt.json` when `PI_MODEL=gpt-*` (compacts
@@ -34,17 +35,27 @@ quality with a pure diffusion model), the data/eval setup, and the iteration pro
   - `azure-anthropic`, `azure-openai` — Azure provider URL/header setup,
     plus a shared fetch retry wrapper (`_shared/retry-fetch.ts`) and an
     `openai-responses` error-message shim that triggers pi's built-in retry.
-  - `mithril` — pi-side spot-preemption nudge (Claude Code gets it via the
-    PreToolUse hook in `ops/`).
   - `checkpoint` — periodic (~30 min, `CHECKPOINT_INTERVAL_MS` to override)
     nudge to refresh `/workspace/STATUS.md` and commit, with an embedded
     GPU/disk snapshot.
   - `resources` — registers a `resources` tool the agent can call on demand
     for an `nvidia-smi` + `df -h /workspace` snapshot.
-- `plan/PLAN.md` — the task description handed to the agent. Required for
-  `make seed`. `plan/` is gitignored, so a clean clone won't have it — create
-  one before seeding. `plan/PLAN-D3PM.md` and `plan/NOTES.md` are auxiliary
-  planning notes.
+- `plan/` — **staging only, and gitignored: no plan content lives in this repo.**
+  `make seed` reads `plan/PLAN.md` (the task handed to the agent) and, if present,
+  `plan/HOST.md` (that host's GPU notes, staged to `doc/HOST.md`). Both are
+  assembled or copied in before seeding, and a clean clone has neither. Sources:
+  the study repo's `plan/` (`PLAN-v*.md`, `HOST-<host>.md`, all version-controlled
+  there) for hand-written plans, or `ops/collab-launch.sh` for the collab arm,
+  which builds `plan/PLAN.md` from `collab/` at launch.
+  The task and protocol files the launcher assembles — `TASK-open.md` /
+  `TASK-nat.md` / `TASK-diffusion.md` (pick with `TASK_DOC=`) plus the
+  `PLAN-collab.md` overlay — are **not** here either: they define the experiment,
+  so they live in the study repo's `collab/`. `COLLAB_DIR` points at it and
+  defaults to a sibling checkout.
+- `docs/` — prose documentation. [`docs/HANDOFF.md`](docs/HANDOFF.md) is the
+  entry point for the collaborative-agents experiment (state, blockers, launch
+  commands, open decisions). Its design spec is **not** here — study design lives
+  in the study repo, at `diffusemt_meta/collab/COLLAB-EXPERIMENT.md`.
 
 ## Quick start
 
@@ -54,9 +65,11 @@ End-to-end on a fresh host (from inside this repo):
 # one-time per host
 make image                                # build the image (auto-detects GPU arch)
 
-# per attempt
-cp plan/PLAN-v3.md plan/PLAN.md           # whichever PLAN to ship to the agent
-cp plan/HOST-titan.md plan/HOST.md        # or HOST-mithril.md, or skip
+# per attempt — stage the plan in from the study repo (PLAN_SRC below is
+# wherever diffusemt_meta/plan is checked out; ../plan when nested in it)
+mkdir -p plan
+cp $PLAN_SRC/PLAN-v3.md   plan/PLAN.md    # whichever PLAN to ship to the agent
+cp $PLAN_SRC/HOST-titan.md plan/HOST.md   # or HOST-mithril.md, or skip
 cat > .env <<'EOF'
 AZURE_BASE_URL=https://...
 OPENAI_API_KEY=...
@@ -69,8 +82,8 @@ PROFILE=pi-azure THINKING=max GPU=0 make run
 # any later restart of this state-dir
 make run                                  # PROFILE/GPU/THINKING/PI_MODEL filled from .config
 
-# optional: Mithril spot auto-resume on this node
-sudo bash ops/mithril-host/install.sh --start
+# optional: auto-resume on this node after a reboot/preemption
+sudo bash ops/host-resume/install.sh --start
 ```
 
 For parallel runs on the same host (e.g. titan2 cards 0 and 1), give each
@@ -97,18 +110,21 @@ make seed                   # populate ./state/{workspace,home} from the image
 and re-runs the seed.
 
 `plan/HOST.md` (optional) is copied to `workspace/doc/HOST.md` if present. The
-PLAN tells the agent to read it for per-machine specifics. Templates in the meta
-repo:
+PLAN tells the agent to read it for per-machine specifics. The per-host files are
+version-controlled in the **study repo's** `plan/` (its own git repo), not here:
 
-- `plan/HOST-titan.md` — cron-managed power cap schedule for titan / titan2
-- `plan/HOST-mithril.md` — Mithril spot-preemption behavior and state-survival contract
+- `HOST-titan.md` / `HOST-titan2.md` — cron-managed power cap schedule and card
+  specifics for titan / titan2
+- `HOST-mithril.md` — Mithril spot-preemption behavior and state-survival contract
 
-Copy or symlink the right one into `plan/HOST.md` before `make seed`
-(`plan/HOST.md` is gitignored so per-host choices don't leak into the plan repo):
+Copy the right one into `plan/HOST.md` before `make seed`. Staging in rather than
+checking the plan repo out here is deliberate: this repo stays task-agnostic, and
+per-host choices can't leak into the plan repo's history.
 
 ```sh
-cp HOST-mithril.md plan/HOST.md   # on a Mithril spot instance
-cp HOST-titan.md   plan/HOST.md   # on titan / titan2
+mkdir -p plan
+cp $PLAN_SRC/HOST-mithril.md plan/HOST.md   # on a Mithril spot instance
+cp $PLAN_SRC/HOST-titan.md   plan/HOST.md   # on titan / titan2
 ```
 
 ## Run
@@ -206,54 +222,54 @@ has been launched with a specific recipe, bare `make run` (or
 `./run.sh "" ""`) is enough to resume it — no need to remember the original
 flags. Explicit env vars or positional args still override.
 
-### Spot / preemption handling
+### Preemption handling
 
-When the host has `/opt/mithril/` (Mithril spot nodes), `run.sh` mounts it
-read-only into the container; `entrypoint.sh` then backgrounds
-`mithril-watch.sh`, which polls the Mithril signal file and SIGINTs the agent
-on preemption. The Claude Code PreToolUse hook (`ops/mithril-hook.sh`) injects
-a nudge to commit, write `/workspace/STATUS.md`, ack via
-`touch /workspace/.shutdown-acked`, and exit. On non-Mithril hosts
-`/opt/mithril/` doesn't exist, so the watcher never starts and the hook
-short-circuits — everything else works the same.
+This branch carries no provider-specific preemption watcher — the `mithril`
+extension and the `ops/mithril-*` scripts exist only on `main`. Preemption is
+handled generically instead:
 
-### Mithril spot auto-resume (systemd)
+- **The agent banks its own state.** The `checkpoint` pi extension nudges it
+  every ~30 min to refresh `/workspace/STATUS.md` and commit, so whatever is on
+  the durable volume at reclaim time is a usable resume point.
+- **The clock measures active time.** `ops/bench-egress.sh` counts compute, not
+  wall clock, so downtime is free and a reclaim does not eat the budget.
+- **The host comes back by itself.** `ops/host-resume/` re-launches the agent on
+  boot (below).
 
-Mithril spot nodes can be relocated to a fresh VM at any time. The kit in
-`ops/mithril-host/` makes the new VM mount the persistent volume and re-launch
-the agent in a detached tmux session on boot, so a relocation comes back up
+### Auto-resume after a preemption reboot (systemd)
+
+`ops/host-resume/` makes a rebooted node wait for its durable volume, then
+re-launch the agent in a detached tmux session, so a reclaim recovers
 unattended. Bootstrap on a fresh node:
 
 ```sh
-# 1. Format & label the persistent volume (one-time; xfs labelled `exp`).
-sudo mkfs.xfs -L exp /dev/sdX
-sudo mkdir -p /home/ubuntu/exp && sudo chown ubuntu:ubuntu /home/ubuntu/exp
-
-# 2. Clone claude_container into /home/ubuntu/exp/diffusemt/ (the path the
-#    systemd unit expects); seed state and build the image once.
-git clone <this repo> /home/ubuntu/exp/diffusemt
-cd /home/ubuntu/exp/diffusemt
+# 1. Clone this repo and build once; $REPO and $STATE_DIR are yours to choose.
+git clone <this repo> /home/ubuntu/mtbench
+cd /home/ubuntu/mtbench
 make image && make seed   # see "Setup" above
 
-# 3. (Optional) pin per-host overrides; without this, run.sh reads them from
-#    $STATE_DIR/.config on resume (see "Config persistence").
-cat > /home/ubuntu/exp/.diffusemt-resume.env <<EOF
-PROFILE=pi-azure
-GPU=all
-# THINKING=max
-EOF
+# 2. Set host specifics. STATE_DIR must live on a volume that survives
+#    preemption -- it holds the workspace, checkpoints, the compute clock
+#    (.bench_elapsed_s) and the completion marker (.bench_done).
+sudo cp ops/host-resume/mtbench-resume.env.example /etc/mtbench-resume.env
+sudo "$EDITOR" /etc/mtbench-resume.env     # REPO, STATE_DIR, MOUNT, IMAGE,
+                                           # PROFILE, GPU, INFERENCE_ALLOWLIST
 
-# 4. Install the systemd units (registers but doesn't start; pass --start to
-#    activate immediately on a fresh node).
-sudo bash ops/mithril-host/install.sh [--start]
+# 3. Install the unit (registers but doesn't start; --start activates now).
+sudo bash ops/host-resume/install.sh [--start]
 ```
 
-Prerequisites (NVIDIA runtime, docker, tmux, ubuntu user, no fstab entry
-racing the mount unit) and operational hints (`tmux attach -t diffusemt`,
-manual start/stop) are documented in the header of `ops/mithril-host/install.sh`.
-Safe to run on a live node with an agent already running — the units are
-enabled, not started, so the next preemption-recovery boot is the first time
-systemd takes over.
+Prerequisites (docker + NVIDIA runtime + tmux, an `ubuntu` user) are in the
+header of `ops/host-resume/install.sh`. Safe on a live node with an agent
+already running — the unit is enabled, not started, so the next recovery boot
+is the first time systemd takes over.
+
+The unit deliberately declares **no** mount dependency and no `WorkingDirectory=`:
+systemd would auto-inject a hard `RequiresMountsFor=`, and a volume that times
+out on a fresh boot would then mark this `Type=oneshot` unit "dependency failed"
+with no restart — a bug that stranded pilot nodes for hours. `bench-resume.sh`
+waits for the volume and docker in-script instead, so a late attach is recovered
+rather than fatal.
 
 ### Username
 

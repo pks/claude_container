@@ -126,4 +126,4 @@ if command -v python3 >/dev/null 2>&1; then
     && echo "bench-egress: cost -> $STATE_DIR/cost.json ($(python3 -c 'import json,sys;print("$"+str(json.load(open(sys.argv[1]))["cost_usd"]))' "$STATE_DIR/cost.json" 2>/dev/null))" >&2 \
     || echo "bench-egress: cost dump skipped (no session usage yet)" >&2
 fi
-echo "bench-egress: deliverable in $STATE_DIR/workspace (model/ + decode.sh); score with bench/scorer/score.sh" >&2
+echo "bench-egress: deliverable in $STATE_DIR/workspace (model/ + decode.sh); score with the study repo's bench/scorer/score.sh" >&2

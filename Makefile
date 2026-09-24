@@ -3,6 +3,10 @@ CUDA_VERSION := cu130
 
 IMAGE     ?= mtbench-container
 STATE_DIR ?= $(CURDIR)/state
+# Task definitions live in the study repo, not here (this repo is task-agnostic).
+# Defaults assume it is checked out as the parent of this directory.
+BENCH_DIR  ?= $(CURDIR)/../bench
+COLLAB_DIR ?= $(CURDIR)/../collab
 # PROFILE / GPU / THINKING default to empty so run.sh can fall through to
 # $(STATE_DIR)/.config — set them on first `make run` for a fresh state-dir
 # and they'll be remembered. Bare `make run` on a fresh dir picks "pi-azure"
@@ -12,18 +16,40 @@ GPU       ?=
 USERNAME  ?= ubuntu
 THINKING  ?=
 
-.PHONY: image seed reseed run smoke bench bench-stage
+.PHONY: image seed reseed run smoke bench bench-stage wiki
+
+# Human view of the collab notes wiki: clone/refresh the bare repo and render a
+# self-contained static site. COLLAB_BARE / WIKI_OUT override the defaults.
+COLLAB_BARE ?= $(HOME)/exp/diffusemt_meta/collab_v0.git
+WIKI_OUT    ?= $(CURDIR)/wiki-site
+wiki:
+	@if [ -d $(CURDIR)/.wiki-clone ]; then \
+	   git -C $(CURDIR)/.wiki-clone remote set-url origin "$(COLLAB_BARE)"; \
+	 else \
+	   git clone -q "$(COLLAB_BARE)" $(CURDIR)/.wiki-clone; \
+	 fi
+	@git -C $(CURDIR)/.wiki-clone pull -q --rebase --autostash origin main
+	@COLLAB_DIR=$(CURDIR)/.wiki-clone ./ops/collab/collab-wiki html $(WIKI_OUT) --no-pull
+	@echo "open: file://$(WIKI_OUT)/index.html"
 
 # Stage the bench task card into plan/ so `make seed` ships it to doc/PLAN.md
 # (plan/ is gitignored — this is the per-deployment input the agent sees).
+# The benchmark definition is not in this repo: it lives in the study repo's
+# bench/. Override BENCH_DIR if it isn't checked out beside this one.
 bench-stage:
+	@if [ ! -f "$(BENCH_DIR)/TASKCARD.md" ]; then \
+	  echo "make bench-stage: $(BENCH_DIR)/TASKCARD.md not found." >&2; \
+	  echo "  The bench definition lives in the study repo (diffusemt_meta/bench)." >&2; \
+	  echo "  Point at it with: make bench-stage BENCH_DIR=/path/to/diffusemt_meta/bench" >&2; \
+	  exit 1; \
+	fi
 	@mkdir -p plan
-	@cp bench/TASKCARD.md plan/PLAN.md
-	@echo "staged: bench/TASKCARD.md -> plan/PLAN.md"
+	@cp $(BENCH_DIR)/TASKCARD.md plan/PLAN.md
+	@echo "staged: $(BENCH_DIR)/TASKCARD.md -> plan/PLAN.md"
 	@echo "next: make seed && make bench PROFILE=pi-azure GPU=all"
 
 # Launch a bench run: egress lock + compute-time budget + the agent. Preemption-
-# aware (resumes via ops/host-resume if installed). See bench/README.md.
+# aware (resumes via ops/host-resume if installed). See the study repo's bench/README.md.
 bench:
 	IMAGE=$(IMAGE) STATE_DIR=$(STATE_DIR) USERNAME=$(USERNAME) THINKING=$(THINKING) \
 	  ./ops/bench-egress.sh "$(PROFILE)" "$(GPU)"
@@ -64,7 +90,8 @@ seed: image
 	    && docker cp $$cid:/workspace/. $(STATE_DIR)/workspace/ \
 	    && docker cp $$cid:/home/$(USERNAME)/. $(STATE_DIR)/home/ \
 	    && docker rm $$cid >/dev/null \
-	    && cp plan/PLAN.md $(STATE_DIR)/workspace/doc/PLAN.md; \
+	    && cp plan/PLAN.md $(STATE_DIR)/workspace/doc/PLAN.md \
+	    && if [ -f plan/HOST.md ]; then cp plan/HOST.md $(STATE_DIR)/workspace/doc/HOST.md; fi; \
 	fi
 
 reseed:
